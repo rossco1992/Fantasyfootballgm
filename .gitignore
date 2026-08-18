@@ -1,0 +1,44 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+
+# Testing
+/coverage
+/playwright-report
+/test-results
+/blob-report
+/playwright/.cache
+
+# Next.js
+/.next/
+/out/
+/build
+*.tsbuildinfo
+next-env.d.ts
+
+# Production
+/dist
+
+# Environment variables & secrets — never commit these
+.env
+.env.*
+!.env.example
+
+# Supabase local
+/supabase/.branches
+/supabase/.temp
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+*.pem
+.vscode/*
+!.vscode/extensions.json
+.idea
