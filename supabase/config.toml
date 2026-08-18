@@ -1,0 +1,16 @@
+# Supabase local development configuration.
+# Used by the Supabase CLI (`supabase start`, `supabase db reset`).
+# Docs: https://supabase.com/docs/guides/cli/config
+
+project_id = "fantasy-football-gm"
+
+[db]
+# Postgres major version. Match your Supabase project (15+ supports gen_random_uuid()).
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = true
