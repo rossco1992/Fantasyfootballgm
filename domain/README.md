@@ -12,3 +12,7 @@ Fantasy-football domain logic.
   provider-specific payloads.
 - No I/O here: no database calls, no HTTP, no framework imports. This keeps the
   domain portable and testable.
+
+See [`docs/player-identity.md`](../docs/player-identity.md) for the canonical NFL
+player fields, uniqueness rules, and deterministic provider-record matching
+strategy implemented in `player.ts`.

@@ -50,3 +50,6 @@ provider-specific IDs mapped in `player_external_ids`, and raw `player_projectio
 that retain their source and `source_timestamp` and are stored non-destructively
 (multiple sources/snapshots coexist; consensus values are derived separately in
 a later story).
+
+The canonical identity fields and deterministic matching strategy are documented
+in [`docs/player-identity.md`](../docs/player-identity.md).

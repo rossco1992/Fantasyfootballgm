@@ -172,12 +172,71 @@ describe("database schema and seed", () => {
     expect(result.rows[0]?.full_name).toBe("Christian McCaffrey");
   });
 
+  it("keeps player identity stable through team changes and free agency", async () => {
+    const playerId = "dddddddd-0000-4000-8000-000000000001";
+    try {
+      await db.query(
+        `insert into players
+          (id, full_name, position, nfl_team, bye_week, status)
+         values ($1, 'Team Change Player', 'RB', 'NYJ', 12, 'active')`,
+        [playerId],
+      );
+      await db.query(
+        `update players
+            set nfl_team = null, bye_week = null, status = 'inactive'
+          where id = $1`,
+        [playerId],
+      );
+
+      const result = await db.query<{
+        id: string;
+        nfl_team: string | null;
+        bye_week: number | null;
+        status: string;
+      }>(`select id, nfl_team, bye_week, status from players where id = $1`, [
+        playerId,
+      ]);
+      expect(result.rows).toEqual([
+        {
+          id: playerId,
+          nfl_team: null,
+          bye_week: null,
+          status: "inactive",
+        },
+      ]);
+    } finally {
+      await db.query("delete from players where id = $1", [playerId]);
+    }
+  });
+
+  it("rejects invalid canonical player details", async () => {
+    await expect(
+      db.exec(`insert into players
+        (full_name, position, nfl_team, bye_week, status)
+        values ('Invalid Bye', 'WR', 'NYG', 23, 'active')`),
+    ).rejects.toThrow();
+
+    await expect(
+      db.exec(`insert into players
+        (full_name, position, nfl_team, bye_week, status)
+        values ('Invalid Status', 'WR', 'NYG', 14, 'available')`),
+    ).rejects.toThrow();
+  });
+
   it("enforces the provider/external-id uniqueness constraint", async () => {
     await expect(
       db.exec(
         `insert into player_external_ids (player_id, provider_id, external_id)
          values ('aaaaaaaa-0000-0000-0000-000000000002',
                  '22222222-2222-2222-2222-222222222222', 'adp-4029')`,
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      db.exec(
+        `insert into player_external_ids (player_id, provider_id, external_id)
+         values ('aaaaaaaa-0000-0000-0000-000000000002',
+                 '22222222-2222-2222-2222-222222222222', '   ')`,
       ),
     ).rejects.toThrow();
   });

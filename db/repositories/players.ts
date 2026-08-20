@@ -1,10 +1,19 @@
 import { query } from "@/db/client";
 import {
   type Player,
+  type PlayerExternalId,
   type PlayerProjection,
+  playerExternalIdSchema,
   playerProjectionSchema,
   playerSchema,
 } from "@/db/types";
+import {
+  type CanonicalPlayer,
+  type CanonicalPlayerInput,
+  canonicalPlayerInputSchema,
+  canonicalPlayerSchema,
+  playerExternalIdentitySchema,
+} from "@/domain/player";
 
 /**
  * Data access for canonical players and their raw projections. All SQL for
@@ -12,24 +21,142 @@ import {
  * not queries (ADR-004).
  */
 
-export async function listPlayers(): Promise<Player[]> {
+const PLAYER_COLUMNS = `id, full_name, position, nfl_team, bye_week, status,
+  created_at, updated_at`;
+const QUALIFIED_PLAYER_COLUMNS = `p.id, p.full_name, p.position, p.nfl_team,
+  p.bye_week, p.status, p.created_at, p.updated_at`;
+
+function mapPlayer(row: Player): CanonicalPlayer {
+  return canonicalPlayerSchema.parse({
+    id: row.id,
+    fullName: row.full_name,
+    position: row.position,
+    nflTeam: row.nfl_team,
+    byeWeek: row.bye_week,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
+
+export async function listPlayers(): Promise<CanonicalPlayer[]> {
   const result = await query<Player>(
-    `select id, full_name, position, nfl_team, created_at, updated_at
+    `select ${PLAYER_COLUMNS}
        from players
       order by full_name`,
   );
-  return result.rows.map((row) => playerSchema.parse(row));
+  return result.rows.map((row) => mapPlayer(playerSchema.parse(row)));
 }
 
-export async function getPlayerById(id: string): Promise<Player | null> {
+export async function getPlayerById(
+  id: string,
+): Promise<CanonicalPlayer | null> {
   const result = await query<Player>(
-    `select id, full_name, position, nfl_team, created_at, updated_at
+    `select ${PLAYER_COLUMNS}
        from players
       where id = $1`,
     [id],
   );
   const row = result.rows[0];
-  return row ? playerSchema.parse(row) : null;
+  return row ? mapPlayer(playerSchema.parse(row)) : null;
+}
+
+export async function getPlayerByExternalId(
+  providerSlug: string,
+  externalId: string,
+): Promise<CanonicalPlayer | null> {
+  const result = await query<Player>(
+    `select ${QUALIFIED_PLAYER_COLUMNS}
+       from player_external_ids x
+       join providers pr on pr.id = x.provider_id
+       join players p on p.id = x.player_id
+      where pr.slug = $1 and x.external_id = $2`,
+    [providerSlug, externalId],
+  );
+  const row = result.rows[0];
+  return row ? mapPlayer(playerSchema.parse(row)) : null;
+}
+
+export async function createPlayer(
+  input: CanonicalPlayerInput,
+): Promise<CanonicalPlayer> {
+  const player = canonicalPlayerInputSchema.parse(input);
+  const result = await query<Player>(
+    `insert into players (full_name, position, nfl_team, bye_week, status)
+     values ($1, $2, $3, $4, $5)
+     returning ${PLAYER_COLUMNS}`,
+    [
+      player.fullName,
+      player.position,
+      player.nflTeam,
+      player.byeWeek,
+      player.status,
+    ],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("The canonical player was not created.");
+  return mapPlayer(playerSchema.parse(row));
+}
+
+export async function updatePlayer(
+  id: string,
+  input: CanonicalPlayerInput,
+): Promise<CanonicalPlayer | null> {
+  const player = canonicalPlayerInputSchema.parse(input);
+  const result = await query<Player>(
+    `update players
+        set full_name = $2,
+            position = $3,
+            nfl_team = $4,
+            bye_week = $5,
+            status = $6,
+            updated_at = now()
+      where id = $1
+      returning ${PLAYER_COLUMNS}`,
+    [
+      id,
+      player.fullName,
+      player.position,
+      player.nflTeam,
+      player.byeWeek,
+      player.status,
+    ],
+  );
+  const row = result.rows[0];
+  return row ? mapPlayer(playerSchema.parse(row)) : null;
+}
+
+export async function listExternalIdsForPlayer(
+  playerId: string,
+): Promise<PlayerExternalId[]> {
+  const result = await query<PlayerExternalId>(
+    `select id, player_id, provider_id, external_id, created_at
+       from player_external_ids
+      where player_id = $1
+      order by provider_id, external_id`,
+    [playerId],
+  );
+  return result.rows.map((row) => playerExternalIdSchema.parse(row));
+}
+
+export async function addPlayerExternalId(
+  playerId: string,
+  providerId: string,
+  externalId: string,
+): Promise<PlayerExternalId> {
+  const identity = playerExternalIdentitySchema.parse({
+    providerId,
+    externalId,
+  });
+  const result = await query<PlayerExternalId>(
+    `insert into player_external_ids (player_id, provider_id, external_id)
+     values ($1, $2, $3)
+     returning id, player_id, provider_id, external_id, created_at`,
+    [playerId, identity.providerId, identity.externalId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("The player external ID was not created.");
+  return playerExternalIdSchema.parse(row);
 }
 
 /**

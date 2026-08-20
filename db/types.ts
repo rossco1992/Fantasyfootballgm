@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { PLAYER_POSITIONS, PLAYER_STATUSES } from "@/domain/player";
+
 /**
  * Row types and validation schemas for the canonical persistence model.
  *
@@ -7,9 +9,6 @@ import { z } from "zod";
  * the repositories return. Zod schemas let services validate rows at the
  * persistence boundary (the project standardizes on Zod for validation).
  */
-
-export const PLAYER_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"] as const;
-export type PlayerPosition = (typeof PLAYER_POSITIONS)[number];
 
 export const SCORING_FORMATS = ["standard", "half_ppr", "ppr"] as const;
 export type ScoringFormat = (typeof SCORING_FORMATS)[number];
@@ -27,6 +26,8 @@ export const playerSchema = z.object({
   full_name: z.string(),
   position: z.enum(PLAYER_POSITIONS),
   nfl_team: z.string().nullable(),
+  bye_week: z.number().int().nullable(),
+  status: z.enum(PLAYER_STATUSES),
   created_at: z.date(),
   updated_at: z.date(),
 });
