@@ -16,4 +16,26 @@ Adapters own:
 - Mapping into normalized DTOs
 
 Domain services and UI must **not** depend directly on provider SDKs or raw
-provider responses. Tests use mock adapters and normalized fixtures.
+provider responses.
+
+## Adapter contract
+
+Every fantasy-data adapter implements `FantasyDataProviderAdapter` from
+`types.ts`:
+
+1. `fetch()` retrieves a provider-specific payload.
+2. `normalize()` converts it into the shared snapshot candidate.
+3. The ingestion service validates each normalized record and quarantines bad
+   records without discarding valid ones.
+
+The supported normalized signals are projection, ranking/ECR, ADP, injury,
+news, historical performance, usage, and market trend. Raw provider values stay
+attached to every normalized record.
+
+`fixture/fixture-provider-adapter.ts` is the reference implementation. Apply
+the reusable contract suite in `tests/contracts/provider-adapter.contract.ts`
+to every future adapter.
+
+Provider adapters do not write to Postgres. They hand candidates to
+`services/provider-ingestion.ts`, which owns lifecycle, idempotency, and
+persistence orchestration.

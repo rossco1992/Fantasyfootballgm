@@ -1,0 +1,107 @@
+{
+  "season": 2026,
+  "week": 1,
+  "observedAt": "2026-08-20T12:00:00.000Z",
+  "sourceId": "fixture-2026-week-1",
+  "sourceUrl": "https://fixtures.example.test/fantasy-data/2026/week-1",
+  "players": [
+    {
+      "externalId": "fixture-cmc",
+      "projection": {
+        "scoring": "ppr",
+        "projectedPoints": 21.7,
+        "stats": { "rushingYards": 78, "receptions": 5, "receivingYards": 41 }
+      },
+      "ranking": {
+        "rank": 4,
+        "positionRank": 2,
+        "tier": 1,
+        "expertCount": 42
+      },
+      "adp": {
+        "overall": 4.6,
+        "position": 2,
+        "sampleSize": 1200,
+        "format": "12-team-ppr"
+      },
+      "injury": {
+        "status": "active",
+        "practiceStatus": null,
+        "details": null
+      },
+      "news": [
+        {
+          "id": "cmc-camp-role",
+          "headline": "Fixture report: lead role unchanged",
+          "summary": "Static contract-test content, not live player news.",
+          "publishedAt": "2026-08-20T11:00:00.000Z",
+          "url": "https://fixtures.example.test/news/cmc-camp-role"
+        }
+      ],
+      "historicalPerformance": {
+        "fantasyPoints": 18.4,
+        "stats": { "rushingYards": 64, "receptions": 6, "receivingYards": 38 }
+      },
+      "usage": {
+        "metrics": {
+          "snapShare": 0.78,
+          "routeParticipation": 0.61,
+          "touchShare": 0.34
+        }
+      },
+      "marketTrend": {
+        "metrics": { "rosterAdds": 120, "rosterDrops": 8, "startRate": 0.91 },
+        "direction": "steady"
+      }
+    },
+    {
+      "externalId": "fixture-chase",
+      "projection": {
+        "scoring": "ppr",
+        "projectedPoints": 20.2,
+        "stats": {
+          "receptions": 6,
+          "receivingYards": 94,
+          "receivingTouchdowns": 0.6
+        }
+      },
+      "ranking": {
+        "rank": 3,
+        "positionRank": 1,
+        "tier": 1,
+        "expertCount": 42
+      },
+      "adp": {
+        "overall": 3.8,
+        "position": 1,
+        "sampleSize": 1200,
+        "format": "12-team-ppr"
+      },
+      "injury": {
+        "status": "active",
+        "practiceStatus": null,
+        "details": null
+      },
+      "news": [],
+      "historicalPerformance": {
+        "fantasyPoints": 19.1,
+        "stats": {
+          "receptions": 7,
+          "receivingYards": 101,
+          "receivingTouchdowns": 0.5
+        }
+      },
+      "usage": {
+        "metrics": {
+          "snapShare": 0.89,
+          "routeParticipation": 0.92,
+          "targetShare": 0.29
+        }
+      },
+      "marketTrend": {
+        "metrics": { "rosterAdds": 90, "rosterDrops": 4, "startRate": 0.94 },
+        "direction": "rising"
+      }
+    }
+  ]
+}
