@@ -50,8 +50,93 @@ describe("database schema and seed", () => {
         "providers",
         "player_external_ids",
         "player_projections",
+        "league_configurations",
       ]),
     );
+  });
+
+  it("persists and edits one validated league configuration per user", async () => {
+    const userId = "33333333-3333-4333-8333-333333333333";
+    await db.query(
+      `insert into league_configurations (
+        user_id, name, team_count, league_format, max_keepers_per_team,
+        draft_type, draft_position, scoring_preset, qb_slots, rb_slots,
+        wr_slots, te_slots, flex_slots, superflex_slots, k_slots, dst_slots,
+        bench_slots
+      ) values ($1, 'Original League', 12, 'redraft', 0, 'snake', 3, 'ppr', 1, 2, 2, 1, 1, 0, 1, 1, 6)
+      on conflict (user_id) do update set name = excluded.name`,
+      [userId],
+    );
+    await db.query(
+      `insert into league_configurations (
+        user_id, name, team_count, league_format, max_keepers_per_team,
+        draft_type, draft_position, scoring_preset, qb_slots, rb_slots,
+        wr_slots, te_slots, flex_slots, superflex_slots, k_slots, dst_slots,
+        bench_slots
+      ) values ($1, 'Edited League', 12, 'keeper', 3, 'snake', 3, 'half_ppr', 1, 2, 2, 1, 1, 0, 1, 1, 6)
+      on conflict (user_id) do update set
+        name = excluded.name, league_format = excluded.league_format,
+        max_keepers_per_team = excluded.max_keepers_per_team,
+        scoring_preset = excluded.scoring_preset`,
+      [userId],
+    );
+
+    const result = await db.query<{
+      name: string;
+      league_format: string;
+      max_keepers_per_team: number;
+      scoring_preset: string;
+    }>(
+      `select name, league_format, max_keepers_per_team, scoring_preset
+         from league_configurations where user_id = $1`,
+      [userId],
+    );
+    expect(result.rows).toEqual([
+      {
+        name: "Edited League",
+        league_format: "keeper",
+        max_keepers_per_team: 3,
+        scoring_preset: "half_ppr",
+      },
+    ]);
+  });
+
+  it("rejects invalid league configurations at the database boundary", async () => {
+    await expect(
+      db.exec(`insert into league_configurations (
+        user_id, name, team_count, league_format, max_keepers_per_team,
+        draft_type, draft_position, scoring_preset, qb_slots, rb_slots,
+        wr_slots, te_slots, flex_slots, superflex_slots, k_slots, dst_slots,
+        bench_slots
+      ) values (
+        '44444444-4444-4444-8444-444444444444', 'Invalid League', 10,
+        'redraft', 0, 'snake', 11, 'ppr', 1, 2, 2, 1, 1, 0, 1, 1, 6
+      )`),
+    ).rejects.toThrow();
+
+    await expect(
+      db.exec(`insert into league_configurations (
+        user_id, name, team_count, league_format, max_keepers_per_team,
+        draft_type, draft_position, scoring_preset, qb_slots, rb_slots,
+        wr_slots, te_slots, flex_slots, superflex_slots, k_slots, dst_slots,
+        bench_slots
+      ) values (
+        '55555555-5555-4555-8555-555555555555', 'No Starters', 10,
+        'redraft', 0, 'linear', 1, 'standard', 0, 0, 0, 0, 0, 0, 0, 0, 6
+      )`),
+    ).rejects.toThrow();
+
+    await expect(
+      db.exec(`insert into league_configurations (
+        user_id, name, team_count, league_format, max_keepers_per_team,
+        draft_type, draft_position, scoring_preset, qb_slots, rb_slots,
+        wr_slots, te_slots, flex_slots, superflex_slots, k_slots, dst_slots,
+        bench_slots
+      ) values (
+        '66666666-6666-4666-8666-666666666666', 'Invalid Keeper League', 10,
+        'keeper', 0, 'snake', 1, 'ppr', 1, 2, 2, 1, 1, 0, 1, 1, 6
+      )`),
+    ).rejects.toThrow();
   });
 
   it("seeds usable development data", async () => {
