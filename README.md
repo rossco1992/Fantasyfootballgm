@@ -42,9 +42,9 @@ npm run dev
 
 The app runs at **http://localhost:3000**.
 
-> The landing page renders without any Supabase configuration. Environment
-> variables are only required by code paths that talk to Supabase, which arrive
-> in later stories.
+> The landing page renders without Supabase configuration. Registration,
+> sign-in, password reset, and authenticated routes require the public Supabase
+> variables below.
 
 ## Environment variables
 
@@ -73,6 +73,24 @@ runtime by [`lib/env.ts`](./lib/env.ts) using Zod.
 | `NEXT_PUBLIC_SUPABASE_URL`      | Public      | Supabase project URL                      |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public      | Supabase publishable anon key             |
 | `SUPABASE_SERVICE_ROLE_KEY`     | Server-only | Privileged Supabase key (server use only) |
+| `DATABASE_URL`                  | Server-only | Postgres migrations and persistence       |
+
+## Authentication
+
+Authentication uses Supabase Auth with cookie-based server-side sessions. The
+public routes are `/register`, `/login`, and `/auth/forgot-password`.
+`/dashboard` and `/auth/update-password` require a verified session.
+
+In Supabase Dashboard → Authentication → URL Configuration:
+
+- Set the local Site URL to `http://localhost:3000` while developing.
+- Add `http://localhost:3000/auth/callback` to Redirect URLs.
+- Add the deployed `/auth/callback` URL before production testing.
+
+Email confirmation and password reset use that callback to exchange the PKCE
+auth code for a cookie-backed session. Supabase's default email service is
+suitable for development but rate-limited; configure custom SMTP before
+production use.
 
 ## Project structure
 
