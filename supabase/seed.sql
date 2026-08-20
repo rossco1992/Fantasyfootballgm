@@ -12,16 +12,22 @@
 -- Providers ------------------------------------------------------------------
 insert into providers (id, slug, name) values
     ('11111111-1111-1111-1111-111111111111', 'csv-import',  'Manual CSV Import'),
-    ('22222222-2222-2222-2222-222222222222', 'mock-adp',    'Mock ADP Provider')
+    ('22222222-2222-2222-2222-222222222222', 'mock-adp',    'Mock ADP Provider'),
+    ('33333333-3333-4333-8333-333333333333', 'fixture-data', 'Fixture Fantasy Data')
 on conflict (id) do nothing;
 
 -- Players --------------------------------------------------------------------
-insert into players (id, full_name, position, nfl_team) values
-    ('aaaaaaaa-0000-0000-0000-000000000001', 'Christian McCaffrey', 'RB',  'SF'),
-    ('aaaaaaaa-0000-0000-0000-000000000002', 'Ja''Marr Chase',      'WR',  'CIN'),
-    ('aaaaaaaa-0000-0000-0000-000000000003', 'Patrick Mahomes',     'QB',  'KC'),
-    ('aaaaaaaa-0000-0000-0000-000000000004', 'Sam LaPorta',         'TE',  'DET')
-on conflict (id) do nothing;
+insert into players (id, full_name, position, nfl_team, bye_week, status) values
+    ('aaaaaaaa-0000-0000-0000-000000000001', 'Christian McCaffrey', 'RB',  'SF',  14, 'active'),
+    ('aaaaaaaa-0000-0000-0000-000000000002', 'Ja''Marr Chase',      'WR',  'CIN', 10, 'active'),
+    ('aaaaaaaa-0000-0000-0000-000000000003', 'Patrick Mahomes',     'QB',  'KC',  10, 'active'),
+    ('aaaaaaaa-0000-0000-0000-000000000004', 'Sam LaPorta',         'TE',  'DET',  8, 'active')
+on conflict (id) do update set
+    full_name = excluded.full_name,
+    position = excluded.position,
+    nfl_team = excluded.nfl_team,
+    bye_week = excluded.bye_week,
+    status = excluded.status;
 
 -- External provider IDs mapped to canonical players (ADR-002) ----------------
 insert into player_external_ids (id, player_id, provider_id, external_id) values
@@ -29,7 +35,9 @@ insert into player_external_ids (id, player_id, provider_id, external_id) values
     ('bbbbbbbb-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'adp-4029'),
     ('bbbbbbbb-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'csv-chase'),
     ('bbbbbbbb-0000-0000-0000-000000000004', 'aaaaaaaa-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'csv-mahomes'),
-    ('bbbbbbbb-0000-0000-0000-000000000005', 'aaaaaaaa-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'csv-laporta')
+    ('bbbbbbbb-0000-0000-0000-000000000005', 'aaaaaaaa-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'csv-laporta'),
+    ('bbbbbbbb-0000-0000-0000-000000000006', 'aaaaaaaa-0000-0000-0000-000000000001', '33333333-3333-4333-8333-333333333333', 'fixture-cmc'),
+    ('bbbbbbbb-0000-0000-0000-000000000007', 'aaaaaaaa-0000-0000-0000-000000000002', '33333333-3333-4333-8333-333333333333', 'fixture-chase')
 on conflict (id) do nothing;
 
 -- Multi-source projections (raw values preserved per source, ADR-002) --------

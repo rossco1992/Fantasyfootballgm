@@ -1,9 +1,9 @@
 # Fantasy Football GM
 
 A deterministic, data-grounded fantasy football assistant for draft, waiver, and
-lineup decisions. This repository currently contains the **application
-foundation** (Linear issue **NOC-5**); domain features are delivered in
-subsequent stories.
+lineup decisions. The current foundation includes authentication, one-league
+configuration, canonical player identity, and a provider-neutral fantasy-data
+ingestion pipeline.
 
 ## Tech stack
 
@@ -12,8 +12,8 @@ subsequent stories.
 | Application        | [Next.js](https://nextjs.org) (App Router) + TypeScript |
 | Styling            | [Tailwind CSS](https://tailwindcss.com)                 |
 | Validation         | [Zod](https://zod.dev)                                  |
-| Database           | Supabase Postgres _(introduced in a later story)_       |
-| Authentication     | Supabase Auth _(introduced in a later story)_           |
+| Database           | Supabase Postgres                                       |
+| Authentication     | Supabase Auth                                           |
 | Unit/service tests | [Vitest](https://vitest.dev)                            |
 | End-to-end tests   | [Playwright](https://playwright.dev)                    |
 | Hosting            | Vercel (app) + Supabase (db/auth)                       |
@@ -42,9 +42,9 @@ npm run dev
 
 The app runs at **http://localhost:3000**.
 
-> The landing page renders without any Supabase configuration. Environment
-> variables are only required by code paths that talk to Supabase, which arrive
-> in later stories.
+> The landing page renders without Supabase configuration. Registration,
+> sign-in, password reset, and authenticated routes require the public Supabase
+> variables below.
 
 ## Environment variables
 
@@ -73,6 +73,24 @@ runtime by [`lib/env.ts`](./lib/env.ts) using Zod.
 | `NEXT_PUBLIC_SUPABASE_URL`      | Public      | Supabase project URL                      |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public      | Supabase publishable anon key             |
 | `SUPABASE_SERVICE_ROLE_KEY`     | Server-only | Privileged Supabase key (server use only) |
+| `DATABASE_URL`                  | Server-only | Postgres migrations and persistence       |
+
+## Authentication
+
+Authentication uses Supabase Auth with cookie-based server-side sessions. The
+public routes are `/register`, `/login`, and `/auth/forgot-password`.
+`/dashboard` and `/auth/update-password` require a verified session.
+
+In Supabase Dashboard → Authentication → URL Configuration:
+
+- Set the local Site URL to `http://localhost:3000` while developing.
+- Add `http://localhost:3000/auth/callback` to Redirect URLs.
+- Add the deployed `/auth/callback` URL before production testing.
+
+Email confirmation and password reset use that callback to exchange the PKCE
+auth code for a cookie-backed session. Supabase's default email service is
+suitable for development but rate-limited; configure custom SMTP before
+production use.
 
 ## Project structure
 
@@ -127,6 +145,11 @@ The app uses **Supabase Postgres**. The persistence layer lives in
 [`supabase/migrations/`](./supabase/migrations) (the source of truth). See
 [`db/README.md`](./db/README.md) for the layer's structure and the canonical
 data model.
+
+Provider ingestion is append-only: scheduled and on-demand attempts preserve
+raw values, validated normalized records, adapter version, timestamps, and
+provenance. See [`providers/README.md`](./providers/README.md) for the adapter
+contract and [`services/README.md`](./services/README.md) for orchestration.
 
 ### Local/development setup
 

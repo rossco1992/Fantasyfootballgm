@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+import {
+  FANTASY_DATA_TYPES,
+  INGESTION_STATUSES,
+  INGESTION_TRIGGERS,
+  jsonValueSchema,
+  normalizedFantasyDataSchema,
+  sourceProvenanceSchema,
+} from "@/domain/fantasy-data";
+import { PLAYER_POSITIONS, PLAYER_STATUSES } from "@/domain/player";
+
 /**
  * Row types and validation schemas for the canonical persistence model.
  *
@@ -7,9 +17,6 @@ import { z } from "zod";
  * the repositories return. Zod schemas let services validate rows at the
  * persistence boundary (the project standardizes on Zod for validation).
  */
-
-export const PLAYER_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DST"] as const;
-export type PlayerPosition = (typeof PLAYER_POSITIONS)[number];
 
 export const SCORING_FORMATS = ["standard", "half_ppr", "ppr"] as const;
 export type ScoringFormat = (typeof SCORING_FORMATS)[number];
@@ -27,6 +34,8 @@ export const playerSchema = z.object({
   full_name: z.string(),
   position: z.enum(PLAYER_POSITIONS),
   nfl_team: z.string().nullable(),
+  bye_week: z.number().int().nullable(),
+  status: z.enum(PLAYER_STATUSES),
   created_at: z.date(),
   updated_at: z.date(),
 });
@@ -54,3 +63,65 @@ export const playerProjectionSchema = z.object({
   ingested_at: z.date(),
 });
 export type PlayerProjection = z.infer<typeof playerProjectionSchema>;
+
+export const providerIngestionRunSchema = z.object({
+  id: z.string().uuid(),
+  provider_id: z.string().uuid(),
+  trigger_type: z.enum(INGESTION_TRIGGERS),
+  status: z.enum(INGESTION_STATUSES),
+  adapter_version: z.string(),
+  season: z.number().int(),
+  week: z.number().int().nullable(),
+  started_at: z.date(),
+  completed_at: z.date().nullable(),
+  records_received: z.number().int(),
+  records_imported: z.number().int(),
+  records_rejected: z.number().int(),
+  unmatched_player_count: z.number().int(),
+  error_details: jsonValueSchema.nullable(),
+  created_at: z.date(),
+});
+export type ProviderIngestionRun = z.infer<typeof providerIngestionRunSchema>;
+
+export const providerDataSnapshotSchema = z.object({
+  id: z.string().uuid(),
+  provider_id: z.string().uuid(),
+  ingestion_run_id: z.string().uuid(),
+  source_fingerprint: z.string().length(64),
+  adapter_version: z.string(),
+  season: z.number().int(),
+  week: z.number().int().nullable(),
+  observed_at: z.date(),
+  imported_at: z.date(),
+  provenance: sourceProvenanceSchema,
+  created_at: z.date(),
+});
+export type ProviderDataSnapshot = z.infer<typeof providerDataSnapshotSchema>;
+
+export const providerDataRecordSchema = z.object({
+  id: z.string().uuid(),
+  snapshot_id: z.string().uuid(),
+  player_id: z.string().uuid().nullable(),
+  external_player_id: z.string(),
+  data_type: z.enum(FANTASY_DATA_TYPES),
+  record_key: z.string(),
+  normalized_payload: normalizedFantasyDataSchema,
+  raw_payload: jsonValueSchema,
+  created_at: z.date(),
+});
+export type ProviderDataRecord = z.infer<typeof providerDataRecordSchema>;
+
+export const providerIngestionStateSchema = z.object({
+  provider_id: z.string().uuid(),
+  last_attempt_at: z.date(),
+  last_success_at: z.date().nullable(),
+  latest_snapshot_id: z.string().uuid().nullable(),
+  last_status: z.enum(INGESTION_STATUSES),
+  stale_after_seconds: z.number().int().positive(),
+  consecutive_failures: z.number().int().nonnegative(),
+  last_error: jsonValueSchema.nullable(),
+  updated_at: z.date(),
+});
+export type ProviderIngestionState = z.infer<
+  typeof providerIngestionStateSchema
+>;

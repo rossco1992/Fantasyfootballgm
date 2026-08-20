@@ -55,7 +55,8 @@ For each implementation task:
   responses.
 - **Persistence/auth boundary (ADR-004):** access Supabase through the layer in
   `lib/supabase/` and `db/`, not scattered through UI. Schema changes go in
-  migrations under `db/` — no manual production database edits.
+  migrations under `supabase/migrations/` — no manual production database
+  edits.
 - **Layering:** keep domain logic out of UI components. `domain/` is pure (no
   I/O, no framework imports). `services/` orchestrate `domain/` + `db/` +
   `providers/`. UI depends on services, not the other way around.
