@@ -1,5 +1,8 @@
 import { logoutAction } from "@/app/auth/actions";
+import { LeagueConfigurationForm } from "@/components/league/league-configuration-form";
+import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
+import { retrieveLeagueConfiguration } from "@/services/league-configurations";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +15,17 @@ export default async function DashboardPage({
     requireAuthenticatedUser(),
     searchParams,
   ]);
+  const configuration = await retrieveLeagueConfiguration(user.id);
+  const initialConfiguration = configuration
+    ? {
+        name: configuration.name,
+        teamCount: configuration.teamCount,
+        draftType: configuration.draftType,
+        draftPosition: configuration.draftPosition,
+        scoringPreset: configuration.scoringPreset,
+        rosterSlots: configuration.rosterSlots,
+      }
+    : DEFAULT_LEAGUE_CONFIGURATION;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-6 py-16">
@@ -42,14 +56,22 @@ export default async function DashboardPage({
       ) : null}
 
       <section className="rounded-2xl border border-neutral-200 bg-neutral-50 p-6 dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-lg font-semibold">You’re signed in</h2>
-        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
-          {user.email ?? "Authenticated user"}
-        </p>
-        <p className="mt-4 text-sm leading-6 text-neutral-600 dark:text-neutral-300">
-          Your session is stored in secure Supabase auth cookies and refreshed
-          as you continue using the application.
-        </p>
+        <div className="mb-8">
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">
+            {user.email ?? "Authenticated user"}
+          </p>
+          <h2 className="mt-2 text-2xl font-bold tracking-tight">
+            {configuration ? "Edit league settings" : "Create your league"}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+            Rankings and draft recommendations will use these exact league
+            rules.
+          </p>
+        </div>
+        <LeagueConfigurationForm
+          initialConfiguration={initialConfiguration}
+          isEditing={configuration !== null}
+        />
       </section>
     </main>
   );
