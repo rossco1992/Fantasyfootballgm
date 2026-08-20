@@ -42,9 +42,9 @@ npm run dev
 
 The app runs at **http://localhost:3000**.
 
-> The landing page renders without any Supabase configuration. Environment
-> variables are only required by code paths that talk to Supabase, which arrive
-> in later stories.
+> The landing page renders without Supabase configuration. Registration,
+> sign-in, password reset, and authenticated routes require the public Supabase
+> variables below.
 
 ## Environment variables
 
@@ -73,6 +73,24 @@ runtime by [`lib/env.ts`](./lib/env.ts) using Zod.
 | `NEXT_PUBLIC_SUPABASE_URL`      | Public      | Supabase project URL                      |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public      | Supabase publishable anon key             |
 | `SUPABASE_SERVICE_ROLE_KEY`     | Server-only | Privileged Supabase key (server use only) |
+| `DATABASE_URL`                  | Server-only | Postgres migrations and persistence       |
+
+## Authentication
+
+Authentication uses Supabase Auth with cookie-based server-side sessions. The
+public routes are `/register`, `/login`, and `/auth/forgot-password`.
+`/dashboard` and `/auth/update-password` require a verified session.
+
+In Supabase Dashboard → Authentication → URL Configuration:
+
+- Set the local Site URL to `http://localhost:3000` while developing.
+- Add `http://localhost:3000/auth/callback` to Redirect URLs.
+- Add the deployed `/auth/callback` URL before production testing.
+
+Email confirmation and password reset use that callback to exchange the PKCE
+auth code for a cookie-backed session. Supabase's default email service is
+suitable for development but rate-limited; configure custom SMTP before
+production use.
 
 ## Project structure
 
@@ -104,6 +122,9 @@ integrations, and persistence separate.
 | `npm run test`         | Run unit/service tests once (Vitest)         |
 | `npm run test:watch`   | Vitest in watch mode                         |
 | `npm run test:e2e`     | Playwright end-to-end tests                  |
+| `npm run db:migrate`   | Apply pending database migrations            |
+| `npm run db:seed`      | Load development seed data (idempotent)      |
+| `npm run db:reset`     | Drop schema, re-migrate, re-seed (dev only)  |
 | `npm run format`       | Format with Prettier                         |
 | `npm run format:check` | Check formatting without writing             |
 | `npm run validate`     | `lint` + `typecheck` + `test` (quality gate) |
@@ -116,6 +137,53 @@ Playwright drives a production build. First install the browser binary once:
 npx playwright install chromium
 npm run test:e2e
 ```
+
+## Database
+
+The app uses **Supabase Postgres**. The persistence layer lives in
+[`db/`](./db) and all schema is defined by ordered SQL migrations under
+[`supabase/migrations/`](./supabase/migrations) (the source of truth). See
+[`db/README.md`](./db/README.md) for the layer's structure and the canonical
+data model.
+
+### Local/development setup
+
+You need a Postgres to point `DATABASE_URL` at (see `.env.example`). Two common
+options:
+
+**Option A — Supabase CLI (full local stack, recommended):**
+
+```bash
+# Install the Supabase CLI: https://supabase.com/docs/guides/cli
+supabase start                 # boots local Postgres + Studio (requires Docker)
+# copy the printed "DB URL" into .env.local as DATABASE_URL
+supabase db reset              # applies migrations + supabase/seed.sql
+```
+
+**Option B — any Postgres (no Docker):** point `DATABASE_URL` at a local or
+hosted Postgres (including a hosted Supabase project), then:
+
+```bash
+npm run db:migrate   # create the schema from migrations
+npm run db:seed      # load development seed data
+# or, to rebuild from scratch (dev only):
+npm run db:reset
+```
+
+### Workflow
+
+- Add a schema change as a **new** migration file in `supabase/migrations/`
+  (e.g. `0002_add_leagues.sql`) — never edit an applied migration. `npm run
+db:new <name>` scaffolds one via the Supabase CLI.
+- Migrations are applied in filename order and tracked in `schema_migrations`,
+  so `db:migrate` only runs what is pending.
+- `supabase/seed.sql` is idempotent (fixed UUIDs + `on conflict do nothing`).
+- Access data through the repositories in `db/repositories/*` — do not query
+  the database from UI or domain code (ADR-004).
+
+A fast, Docker-free check that the migrations and seed are valid runs as part
+of the normal test suite (`db/schema.test.ts`, backed by an in-process
+Postgres).
 
 ## Quality bar
 

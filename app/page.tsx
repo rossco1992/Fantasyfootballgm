@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-6 px-6 py-16">
@@ -13,6 +15,21 @@ export default function Home() {
           decisions. This is the initialized project shell &mdash; domain
           features are delivered in subsequent stories.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <Link
+          href="/register"
+          className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          Create account
+        </Link>
+        <Link
+          href="/login"
+          className="rounded-lg border border-neutral-300 px-5 py-2.5 text-sm font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+        >
+          Sign in
+        </Link>
       </div>
 
       <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">

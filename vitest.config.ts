@@ -12,6 +12,10 @@ export default defineConfig({
     // Unit/service tests only. Playwright owns end-to-end specs under tests/e2e.
     include: ["**/*.{test,spec}.{ts,tsx}"],
     exclude: ["node_modules", ".next", "tests/e2e/**"],
+    // The DB schema test spins up an in-process Postgres (PGlite); its first
+    // WASM init can take a while, so allow generous hook/test timeouts.
+    hookTimeout: 60_000,
+    testTimeout: 30_000,
   },
   resolve: {
     alias: {

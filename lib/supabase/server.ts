@@ -25,11 +25,16 @@ export async function createSupabaseServerClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           try {
             for (const { name, value, options } of cookiesToSet) {
               cookieStore.set(name, value, options);
             }
+            // Supabase supplies no-cache headers alongside refreshed auth
+            // cookies. Server Components cannot write response headers, but
+            // Route Handlers, Server Actions, and the proxy can. The proxy
+            // applies these headers to the actual response.
+            void headers;
           } catch {
             // `setAll` can be called from a Server Component, where mutating
             // cookies is not allowed. This is safe to ignore when middleware
