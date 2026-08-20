@@ -5,6 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { readMigrationFiles } from "@/db/migrate";
+import { LATEST_PLAYER_DATA_SQL } from "@/db/repositories/provider-ingestion";
 
 /**
  * Verifies the Definition of Done using an in-process Postgres (PGlite): a
@@ -51,6 +52,11 @@ describe("database schema and seed", () => {
         "player_external_ids",
         "player_projections",
         "league_configurations",
+        "provider_ingestion_runs",
+        "provider_data_snapshots",
+        "provider_data_records",
+        "provider_ingestion_rejections",
+        "provider_ingestion_state",
       ]),
     );
   });
@@ -140,10 +146,191 @@ describe("database schema and seed", () => {
   });
 
   it("seeds usable development data", async () => {
-    expect(await count(db, "providers")).toBe(2);
+    expect(await count(db, "providers")).toBe(3);
     expect(await count(db, "players")).toBe(4);
-    expect(await count(db, "player_external_ids")).toBe(5);
+    expect(await count(db, "player_external_ids")).toBe(7);
     expect(await count(db, "player_projections")).toBe(5);
+  });
+
+  it("stores immutable raw and normalized provider snapshots idempotently", async () => {
+    const runId = "eeeeeeee-0000-4000-8000-000000000001";
+    const snapshotId = "eeeeeeee-0000-4000-8000-000000000002";
+    const replayRunId = "eeeeeeee-0000-4000-8000-000000000003";
+    const fingerprint = "a".repeat(64);
+
+    await db.query(
+      `insert into provider_ingestion_runs
+        (id, provider_id, trigger_type, status, adapter_version, season, week,
+         started_at, completed_at, records_received, records_imported)
+       values ($1, '33333333-3333-4333-8333-333333333333', 'on_demand',
+         'running', '1.0.0', 2026, 1, '2026-08-20T12:01:00Z',
+         null, 1, 1)`,
+      [runId],
+    );
+    await db.query(
+      `insert into provider_data_snapshots
+        (id, provider_id, ingestion_run_id, source_fingerprint,
+         adapter_version, season, week, observed_at, imported_at, provenance)
+       values ($1, '33333333-3333-4333-8333-333333333333', $2, $3,
+         '1.0.0', 2026, 1, '2026-08-20T12:00:00Z',
+         '2026-08-20T12:01:01Z',
+         '{"source":"Fixture Fantasy Data","sourceId":"fixture-1","sourceUrl":null,"notes":[]}'::jsonb)`,
+      [snapshotId, runId, fingerprint],
+    );
+    await db.query(
+      `insert into provider_data_records
+        (snapshot_id, player_id, external_player_id, data_type, record_key,
+         normalized_payload, raw_payload)
+       values ($1, 'aaaaaaaa-0000-0000-0000-000000000001', 'fixture-cmc',
+         'projection', 'fixture-cmc:projection',
+         '{"type":"projection","scoring":"ppr","projectedPoints":21.7,"stats":{"receptions":5}}'::jsonb,
+         '{"projected_points":"21.7","receptions":"5"}'::jsonb)`,
+      [snapshotId],
+    );
+    await db.query(
+      `update provider_ingestion_runs
+          set status = 'succeeded', completed_at = '2026-08-20T12:01:01Z'
+        where id = $1`,
+      [runId],
+    );
+
+    const stored = await db.query<{
+      normalized_payload: { projectedPoints: number };
+      raw_payload: { projected_points: string };
+    }>(
+      `select normalized_payload, raw_payload
+         from provider_data_records where snapshot_id = $1`,
+      [snapshotId],
+    );
+    expect(stored.rows[0]).toEqual({
+      normalized_payload: expect.objectContaining({ projectedPoints: 21.7 }),
+      raw_payload: { projected_points: "21.7", receptions: "5" },
+    });
+
+    await db.query(
+      `insert into provider_ingestion_runs
+        (id, provider_id, trigger_type, status, adapter_version, season, week,
+         started_at, completed_at, records_received)
+       values ($1, '33333333-3333-4333-8333-333333333333', 'on_demand',
+         'running', '1.0.0', 2026, 1, '2026-08-20T12:02:00Z',
+         null, 1)`,
+      [replayRunId],
+    );
+
+    await expect(
+      db.query(
+        `insert into provider_data_snapshots
+          (provider_id, ingestion_run_id, source_fingerprint, adapter_version,
+           season, week, observed_at, imported_at, provenance)
+         values ('33333333-3333-4333-8333-333333333333', $1, $2, '1.0.0',
+           2026, 1, now(), now(), '{}'::jsonb)`,
+        [replayRunId, fingerprint],
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      db.query(
+        `update provider_data_snapshots set observed_at = now() where id = $1`,
+        [snapshotId],
+      ),
+    ).rejects.toThrow(/append-only/);
+
+    await expect(
+      db.query(
+        `insert into provider_data_records
+          (snapshot_id, player_id, external_player_id, data_type, record_key,
+           normalized_payload, raw_payload)
+         values ($1, 'aaaaaaaa-0000-0000-0000-000000000001', 'fixture-cmc',
+           'usage', 'fixture-cmc:late-usage',
+           '{"type":"usage","metrics":{"snapShare":0.8}}'::jsonb,
+           '{"snap_share":0.8}'::jsonb)`,
+        [snapshotId],
+      ),
+    ).rejects.toThrow(/sealed/);
+  });
+
+  it("returns records only from each provider's freshest applicable snapshot", async () => {
+    const oldRunId = "ffffffff-0000-4000-8000-000000000001";
+    const newRunId = "ffffffff-0000-4000-8000-000000000002";
+    const oldSnapshotId = "ffffffff-0000-4000-8000-000000000003";
+    const newSnapshotId = "ffffffff-0000-4000-8000-000000000004";
+    const providerId = "33333333-3333-4333-8333-333333333333";
+    const playerId = "aaaaaaaa-0000-0000-0000-000000000001";
+
+    for (const [runId, startedAt] of [
+      [oldRunId, "2026-08-20T12:01:00Z"],
+      [newRunId, "2026-08-20T13:01:00Z"],
+    ]) {
+      await db.query(
+        `insert into provider_ingestion_runs
+          (id, provider_id, trigger_type, status, adapter_version, season,
+           week, started_at, completed_at)
+         values ($1, $2, 'scheduled', 'running', '1.0.0', 2026, 2,
+           $3, null)`,
+        [runId, providerId, startedAt],
+      );
+    }
+
+    await db.query(
+      `insert into provider_data_snapshots
+        (id, provider_id, ingestion_run_id, source_fingerprint,
+         adapter_version, season, week, observed_at, imported_at, provenance)
+       values
+        ($1, $3, $4, $6, '1.0.0', 2026, 2, '2026-08-20T12:00:00Z',
+         '2026-08-20T12:01:00Z', $8::jsonb),
+        ($2, $3, $5, $7, '1.0.0', 2026, 2, '2026-08-20T13:00:00Z',
+         '2026-08-20T13:01:00Z', $8::jsonb)`,
+      [
+        oldSnapshotId,
+        newSnapshotId,
+        providerId,
+        oldRunId,
+        newRunId,
+        "b".repeat(64),
+        "c".repeat(64),
+        JSON.stringify({
+          source: "Fixture Fantasy Data",
+          sourceId: "freshness-test",
+          sourceUrl: null,
+          notes: [],
+        }),
+      ],
+    );
+    await db.query(
+      `insert into provider_data_records
+        (snapshot_id, player_id, external_player_id, data_type, record_key,
+         normalized_payload, raw_payload)
+       values
+        ($1, $3, 'fixture-cmc', 'projection', 'fixture-cmc:projection',
+         '{"type":"projection","scoring":"ppr","projectedPoints":10,"stats":{}}'::jsonb,
+         '{"points":10}'::jsonb),
+        ($1, $3, 'fixture-cmc', 'projection', 'fixture-cmc:old-only',
+         '{"type":"projection","scoring":"ppr","projectedPoints":99,"stats":{}}'::jsonb,
+         '{"points":99}'::jsonb),
+        ($2, $3, 'fixture-cmc', 'projection', 'fixture-cmc:projection',
+         '{"type":"projection","scoring":"ppr","projectedPoints":20,"stats":{}}'::jsonb,
+         '{"points":20}'::jsonb)`,
+      [oldSnapshotId, newSnapshotId, playerId],
+    );
+    await db.query(
+      `update provider_ingestion_runs
+          set status = 'succeeded', completed_at = started_at
+        where id in ($1, $2)`,
+      [oldRunId, newRunId],
+    );
+
+    const result = await db.query<{
+      snapshot_id: string;
+      record_key: string;
+      normalized_payload: { projectedPoints: number };
+    }>(LATEST_PLAYER_DATA_SQL, [playerId, "projection", 2026, 2]);
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      snapshot_id: newSnapshotId,
+      record_key: "fixture-cmc:projection",
+      normalized_payload: { projectedPoints: 20 },
+    });
   });
 
   it("preserves raw values from multiple sources without collapsing (ADR-002)", async () => {

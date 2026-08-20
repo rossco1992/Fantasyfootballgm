@@ -16,3 +16,8 @@ Fantasy-football domain logic.
 See [`docs/player-identity.md`](../docs/player-identity.md) for the canonical NFL
 player fields, uniqueness rules, and deterministic provider-record matching
 strategy implemented in `player.ts`.
+
+`fantasy-data.ts` defines the provider-neutral normalized contracts for
+projections, rankings, ADP, injuries, news, historical performance, usage, and
+market trends. Provider payloads are validated against these contracts before
+they enter the canonical persistence layer.

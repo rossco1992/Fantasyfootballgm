@@ -1,9 +1,9 @@
 # Fantasy Football GM
 
 A deterministic, data-grounded fantasy football assistant for draft, waiver, and
-lineup decisions. This repository currently contains the **application
-foundation** (Linear issue **NOC-5**); domain features are delivered in
-subsequent stories.
+lineup decisions. The current foundation includes authentication, one-league
+configuration, canonical player identity, and a provider-neutral fantasy-data
+ingestion pipeline.
 
 ## Tech stack
 
@@ -12,8 +12,8 @@ subsequent stories.
 | Application        | [Next.js](https://nextjs.org) (App Router) + TypeScript |
 | Styling            | [Tailwind CSS](https://tailwindcss.com)                 |
 | Validation         | [Zod](https://zod.dev)                                  |
-| Database           | Supabase Postgres _(introduced in a later story)_       |
-| Authentication     | Supabase Auth _(introduced in a later story)_           |
+| Database           | Supabase Postgres                                       |
+| Authentication     | Supabase Auth                                           |
 | Unit/service tests | [Vitest](https://vitest.dev)                            |
 | End-to-end tests   | [Playwright](https://playwright.dev)                    |
 | Hosting            | Vercel (app) + Supabase (db/auth)                       |
@@ -145,6 +145,11 @@ The app uses **Supabase Postgres**. The persistence layer lives in
 [`supabase/migrations/`](./supabase/migrations) (the source of truth). See
 [`db/README.md`](./db/README.md) for the layer's structure and the canonical
 data model.
+
+Provider ingestion is append-only: scheduled and on-demand attempts preserve
+raw values, validated normalized records, adapter version, timestamps, and
+provenance. See [`providers/README.md`](./providers/README.md) for the adapter
+contract and [`services/README.md`](./services/README.md) for orchestration.
 
 ### Local/development setup
 
