@@ -20,6 +20,8 @@ export default async function DashboardPage({
     ? {
         name: configuration.name,
         teamCount: configuration.teamCount,
+        leagueFormat: configuration.leagueFormat,
+        maxKeepersPerTeam: configuration.maxKeepersPerTeam,
         draftType: configuration.draftType,
         draftPosition: configuration.draftPosition,
         scoringPreset: configuration.scoringPreset,

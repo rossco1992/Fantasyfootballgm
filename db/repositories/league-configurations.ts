@@ -10,6 +10,8 @@ type LeagueConfigurationRow = {
   user_id: string;
   name: string;
   team_count: number;
+  league_format: string;
+  max_keepers_per_team: number;
   draft_type: string;
   draft_position: number;
   scoring_preset: string;
@@ -26,14 +28,17 @@ type LeagueConfigurationRow = {
   updated_at: Date;
 };
 
-const COLUMNS = `id, user_id, name, team_count, draft_type, draft_position,
-  scoring_preset, qb_slots, rb_slots, wr_slots, te_slots, flex_slots,
-  superflex_slots, k_slots, dst_slots, bench_slots, created_at, updated_at`;
+const COLUMNS = `id, user_id, name, team_count, league_format,
+  max_keepers_per_team, draft_type, draft_position, scoring_preset, qb_slots,
+  rb_slots, wr_slots, te_slots, flex_slots, superflex_slots, k_slots, dst_slots,
+  bench_slots, created_at, updated_at`;
 
 function mapRow(row: LeagueConfigurationRow): LeagueConfiguration {
   const input = leagueConfigurationInputSchema.parse({
     name: row.name,
     teamCount: row.team_count,
+    leagueFormat: row.league_format,
+    maxKeepersPerTeam: row.max_keepers_per_team,
     draftType: row.draft_type,
     draftPosition: row.draft_position,
     scoringPreset: row.scoring_preset,
@@ -89,15 +94,18 @@ export async function upsertLeagueConfiguration(
   const slots = configuration.rosterSlots;
   const result = await query<LeagueConfigurationRow>(
     `insert into league_configurations (
-       user_id, name, team_count, draft_type, draft_position, scoring_preset,
-       qb_slots, rb_slots, wr_slots, te_slots, flex_slots, superflex_slots,
-       k_slots, dst_slots, bench_slots
+       user_id, name, team_count, league_format, max_keepers_per_team,
+       draft_type, draft_position, scoring_preset, qb_slots, rb_slots, wr_slots,
+       te_slots, flex_slots, superflex_slots, k_slots, dst_slots, bench_slots
      ) values (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+       $16, $17
      )
      on conflict (user_id) do update set
        name = excluded.name,
        team_count = excluded.team_count,
+       league_format = excluded.league_format,
+       max_keepers_per_team = excluded.max_keepers_per_team,
        draft_type = excluded.draft_type,
        draft_position = excluded.draft_position,
        scoring_preset = excluded.scoring_preset,
@@ -116,6 +124,8 @@ export async function upsertLeagueConfiguration(
       userId,
       configuration.name,
       configuration.teamCount,
+      configuration.leagueFormat,
+      configuration.maxKeepersPerTeam,
       configuration.draftType,
       configuration.draftPosition,
       configuration.scoringPreset,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const DRAFT_TYPES = ["snake", "linear"] as const;
+export const LEAGUE_FORMATS = ["redraft", "keeper"] as const;
 export const SCORING_PRESETS = ["standard", "half_ppr", "ppr"] as const;
 export const ROSTER_SLOT_KEYS = [
   "qb",
@@ -64,6 +65,14 @@ export const leagueConfigurationInputSchema = z
       .int("Team count must be a whole number.")
       .min(4, "A league must have at least 4 teams.")
       .max(20, "A league cannot have more than 20 teams."),
+    leagueFormat: z.enum(LEAGUE_FORMATS, {
+      message: "Select a valid league format.",
+    }),
+    maxKeepersPerTeam: z
+      .number()
+      .int("Maximum keepers must be a whole number.")
+      .min(0, "Maximum keepers cannot be negative.")
+      .max(40, "Maximum keepers cannot exceed 40."),
     draftType: z.enum(DRAFT_TYPES, { message: "Select a valid draft type." }),
     draftPosition: z
       .number()
@@ -74,13 +83,49 @@ export const leagueConfigurationInputSchema = z
     }),
     rosterSlots: rosterSlotsSchema,
   })
-  .refine(
-    (configuration) => configuration.draftPosition <= configuration.teamCount,
-    {
-      message: "Draft position cannot exceed the number of teams.",
-      path: ["draftPosition"],
-    },
-  );
+  .superRefine((configuration, context) => {
+    if (configuration.draftPosition > configuration.teamCount) {
+      context.addIssue({
+        code: "custom",
+        message: "Draft position cannot exceed the number of teams.",
+        path: ["draftPosition"],
+      });
+    }
+
+    if (
+      configuration.leagueFormat === "redraft" &&
+      configuration.maxKeepersPerTeam !== 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Redraft leagues cannot have keepers.",
+        path: ["maxKeepersPerTeam"],
+      });
+    }
+
+    if (
+      configuration.leagueFormat === "keeper" &&
+      configuration.maxKeepersPerTeam < 1
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Keeper leagues must allow at least one keeper per team.",
+        path: ["maxKeepersPerTeam"],
+      });
+    }
+
+    const totalRosterSlots = Object.values(configuration.rosterSlots).reduce(
+      (total, slots) => total + slots,
+      0,
+    );
+    if (configuration.maxKeepersPerTeam > totalRosterSlots) {
+      context.addIssue({
+        code: "custom",
+        message: "Maximum keepers cannot exceed the roster size.",
+        path: ["maxKeepersPerTeam"],
+      });
+    }
+  });
 
 export type LeagueConfigurationInput = z.infer<
   typeof leagueConfigurationInputSchema
@@ -96,6 +141,8 @@ export type LeagueConfiguration = LeagueConfigurationInput & {
 export const DEFAULT_LEAGUE_CONFIGURATION: LeagueConfigurationInput = {
   name: "My League",
   teamCount: 12,
+  leagueFormat: "redraft",
+  maxKeepersPerTeam: 0,
   draftType: "snake",
   draftPosition: 1,
   scoringPreset: "ppr",

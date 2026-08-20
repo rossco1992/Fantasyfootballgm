@@ -15,6 +15,8 @@ const row = {
   user_id: "22222222-2222-4222-8222-222222222222",
   name: "Home League",
   team_count: 12,
+  league_format: "keeper",
+  max_keepers_per_team: 3,
   draft_type: "snake",
   draft_position: 4,
   scoring_preset: "half_ppr",
@@ -43,6 +45,8 @@ describe("league configuration repository", () => {
       id: row.id,
       userId: row.user_id,
       name: "Home League",
+      leagueFormat: "keeper",
+      maxKeepersPerTeam: 3,
       scoringPreset: "half_ppr",
       rosterSlots: { wr: 3, superflex: 0, bench: 6 },
     });
@@ -67,10 +71,12 @@ describe("league configuration repository", () => {
 
     const [sql, values] = vi.mocked(query).mock.calls[0]!;
     expect(sql).toContain("on conflict (user_id) do update");
-    expect(values?.slice(0, 6)).toEqual([
+    expect(values?.slice(0, 8)).toEqual([
       row.user_id,
       row.name,
       12,
+      "redraft",
+      0,
       "snake",
       1,
       "ppr",

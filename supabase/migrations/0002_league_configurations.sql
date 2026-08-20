@@ -9,6 +9,8 @@ create table if not exists league_configurations (
     user_id        uuid        not null unique,
     name           text        not null check (char_length(trim(name)) between 1 and 80),
     team_count     smallint    not null check (team_count between 4 and 20),
+    league_format  text        not null check (league_format in ('redraft', 'keeper')),
+    max_keepers_per_team smallint not null check (max_keepers_per_team between 0 and 40),
     draft_type     text        not null check (draft_type in ('snake', 'linear')),
     draft_position smallint    not null check (draft_position between 1 and team_count),
     scoring_preset text        not null check (scoring_preset in ('standard', 'half_ppr', 'ppr')),
@@ -30,6 +32,12 @@ create table if not exists league_configurations (
     constraint league_roster_size check (
       qb_slots + rb_slots + wr_slots + te_slots + flex_slots +
       superflex_slots + k_slots + dst_slots + bench_slots <= 40
+    ),
+    constraint valid_keeper_settings check (
+      (league_format = 'redraft' and max_keepers_per_team = 0) or
+      (league_format = 'keeper' and max_keepers_per_team between 1 and
+        qb_slots + rb_slots + wr_slots + te_slots + flex_slots +
+        superflex_slots + k_slots + dst_slots + bench_slots)
     )
 );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import {
   INITIAL_LEAGUE_FORM_STATE,
@@ -45,6 +45,9 @@ export function LeagueConfigurationForm({
     saveLeagueConfigurationAction,
     INITIAL_LEAGUE_FORM_STATE,
   );
+  const [leagueFormat, setLeagueFormat] = useState(
+    initialConfiguration.leagueFormat,
+  );
 
   return (
     <form action={formAction} className="space-y-8">
@@ -85,6 +88,42 @@ export function LeagueConfigurationForm({
           />
           <FieldError messages={state.fieldErrors?.teamCount} />
         </label>
+
+        <label>
+          <span className="text-sm font-medium">League format</span>
+          <select
+            className={fieldClass}
+            name="leagueFormat"
+            onChange={(event) =>
+              setLeagueFormat(event.target.value as "redraft" | "keeper")
+            }
+            value={leagueFormat}
+          >
+            <option value="redraft">Redraft</option>
+            <option value="keeper">Keeper</option>
+          </select>
+          <FieldError messages={state.fieldErrors?.leagueFormat} />
+        </label>
+
+        {leagueFormat === "keeper" ? (
+          <label>
+            <span className="text-sm font-medium">
+              Maximum keepers per team
+            </span>
+            <input
+              className={fieldClass}
+              defaultValue={initialConfiguration.maxKeepersPerTeam || 1}
+              max={40}
+              min={1}
+              name="maxKeepersPerTeam"
+              required
+              type="number"
+            />
+            <FieldError messages={state.fieldErrors?.maxKeepersPerTeam} />
+          </label>
+        ) : (
+          <input name="maxKeepersPerTeam" type="hidden" value="0" />
+        )}
 
         <label>
           <span className="text-sm font-medium">Scoring preset</span>

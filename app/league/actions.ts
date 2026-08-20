@@ -26,6 +26,8 @@ export async function saveLeagueConfigurationAction(
   const parsed = leagueConfigurationInputSchema.safeParse({
     name: formData.get("name"),
     teamCount: numberValue(formData, "teamCount"),
+    leagueFormat: formData.get("leagueFormat"),
+    maxKeepersPerTeam: numberValue(formData, "maxKeepersPerTeam"),
     draftType: formData.get("draftType"),
     draftPosition: numberValue(formData, "draftPosition"),
     scoringPreset: formData.get("scoringPreset"),
