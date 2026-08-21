@@ -33,6 +33,7 @@ class MemoryIngestionStore implements ProviderIngestionStore {
   readonly starts: ProviderIngestionRequest[] = [];
   readonly snapshots = new Map<string, string>();
   health: ProviderIngestionHealth | null = null;
+  lastPersisted: PersistProviderSnapshotInput | null = null;
   private runNumber = 0;
 
   async startRun(
@@ -63,10 +64,17 @@ class MemoryIngestionStore implements ProviderIngestionStore {
   async persistSnapshot(
     input: PersistProviderSnapshotInput,
   ): Promise<ProviderIngestionResult> {
+    this.lastPersisted = input;
     const existing = this.snapshots.get(input.sourceFingerprint);
     const snapshotId = existing ?? SNAPSHOT_ID;
     if (!existing) this.snapshots.set(input.sourceFingerprint, snapshotId);
-    const status = input.rejections.length > 0 ? "partial" : "succeeded";
+    const coverageGaps = (input.snapshot.provenance.coverage ?? [])
+      .filter((coverage) => coverage.status === "unavailable")
+      .map((coverage) => coverage.dataset);
+    const status =
+      input.rejections.length > 0 || coverageGaps.length > 0
+        ? "partial"
+        : "succeeded";
     this.health = {
       providerId: input.providerId,
       providerSlug: input.descriptor.slug,
@@ -91,6 +99,11 @@ class MemoryIngestionStore implements ProviderIngestionStore {
       recordsImported: existing ? 0 : input.records.length,
       recordsRejected: input.rejections.length,
       unmatchedPlayerCount: 0,
+      playerIdentitiesReceived: input.playerIdentities.length,
+      playerIdentitiesImported: existing ? 0 : input.playerIdentities.length,
+      gamesReceived: input.games.length,
+      gamesImported: existing ? 0 : input.games.length,
+      coverageGaps,
     };
   }
 
@@ -119,6 +132,11 @@ class MemoryIngestionStore implements ProviderIngestionStore {
       recordsImported: 0,
       recordsRejected: input.rejections.length,
       unmatchedPlayerCount: 0,
+      playerIdentitiesReceived: input.playerIdentitiesReceived,
+      playerIdentitiesImported: 0,
+      gamesReceived: input.gamesReceived,
+      gamesImported: 0,
+      coverageGaps: [],
     };
   }
 
@@ -223,6 +241,86 @@ describe("provider ingestion service", () => {
       recordsImported: 15,
       recordsRejected: 1,
     });
+  });
+
+  it("validates identity/game records and surfaces source coverage gaps", async () => {
+    const store = new MemoryIngestionStore();
+    class HistoricalAdapter extends FixtureProviderAdapter {
+      override normalize(
+        payload: FixtureProviderPayload,
+        request: ProviderIngestionRequest,
+      ): ProviderSnapshotCandidate {
+        const snapshot = super.normalize(payload, request);
+        return {
+          ...snapshot,
+          provenance: {
+            ...(snapshot.provenance as Record<string, unknown>),
+            coverage: [
+              {
+                dataset: "play_by_play_participation",
+                status: "unavailable",
+                recordCount: 0,
+                sourceUrl: "https://example.test/participation.csv",
+                observedAt: null,
+                detail: "not published",
+              },
+            ],
+          },
+          players: [
+            {
+              externalPlayerId: "fixture-cmc",
+              fullName: "Christian McCaffrey",
+              position: "RB",
+              nflTeam: "SF",
+              byeWeek: 14,
+              status: "active",
+              aliases: [
+                {
+                  providerSlug: "sleeper",
+                  providerName: "Sleeper",
+                  externalId: "4034",
+                },
+              ],
+              raw: { source: "roster" },
+            },
+          ],
+          games: [
+            {
+              externalGameId: "2026_01_SF_SEA",
+              season: 2026,
+              week: 1,
+              seasonType: "REG",
+              kickoffAt: "2026-09-13T20:25:00.000Z",
+              homeTeam: "SEA",
+              awayTeam: "SF",
+              homeScore: null,
+              awayScore: null,
+              neutralSite: false,
+              raw: { game_id: "2026_01_SF_SEA" },
+            },
+          ],
+        };
+      }
+    }
+
+    const result = await ingestProviderData(
+      new HistoricalAdapter(),
+      { trigger: "scheduled", season: 2026, week: 1 },
+      { store },
+    );
+
+    expect(result).toMatchObject({
+      status: "partial",
+      playerIdentitiesReceived: 1,
+      gamesReceived: 1,
+      coverageGaps: ["play_by_play_participation"],
+      error: {
+        kind: "partial_import",
+        coverageGaps: ["play_by_play_participation"],
+      },
+    });
+    expect(store.lastPersisted?.playerIdentities).toHaveLength(1);
+    expect(store.lastPersisted?.games).toHaveLength(1);
   });
 
   it("keeps the last successful snapshot when a later provider attempt fails", async () => {

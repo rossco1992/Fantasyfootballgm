@@ -15,3 +15,8 @@ It validates adapter output record by record, generates a deterministic source
 fingerprint, persists immutable snapshots, returns partial/failure details, and
 calculates source freshness. A failed attempt updates provider health but never
 replaces the last valid snapshot.
+
+`historical-context.ts` refreshes nflverse before Sleeper so explicit roster ID
+aliases resolve market activity through the canonical player map. It also
+assembles player history, usage, matchup games, and separately attributed market
+trends for one season/week.

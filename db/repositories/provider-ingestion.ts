@@ -16,12 +16,16 @@ import {
   type IngestionStatus,
   type JsonValue,
   type ProviderDescriptor,
+  type ProviderGame,
   type ProviderIngestionRequest,
+  type ProviderPlayerIdentity,
   type ProviderRecord,
   type ProviderSnapshotMetadata,
   type RejectedProviderRecord,
+  providerGameCandidateSchema,
   providerDescriptorSchema,
   providerIngestionRequestSchema,
+  providerPlayerIdentityCandidateSchema,
   providerSnapshotMetadataSchema,
 } from "@/domain/fantasy-data";
 
@@ -38,6 +42,8 @@ export type PersistProviderSnapshotInput = {
   snapshot: ProviderSnapshotMetadata;
   sourceFingerprint: string;
   records: ProviderRecord[];
+  playerIdentities: ProviderPlayerIdentity[];
+  games: ProviderGame[];
   rejections: RejectedProviderRecord[];
   importedAt: Date;
 };
@@ -51,6 +57,11 @@ export type ProviderIngestionResult = {
   recordsImported: number;
   recordsRejected: number;
   unmatchedPlayerCount: number;
+  playerIdentitiesReceived: number;
+  playerIdentitiesImported: number;
+  gamesReceived: number;
+  gamesImported: number;
+  coverageGaps: string[];
 };
 
 export type FailedProviderIngestionInput = {
@@ -60,6 +71,8 @@ export type FailedProviderIngestionInput = {
   completedAt: Date;
   errorDetails: JsonValue;
   recordsReceived: number;
+  playerIdentitiesReceived: number;
+  gamesReceived: number;
   rejections: RejectedProviderRecord[];
 };
 
@@ -94,6 +107,27 @@ export type LatestProviderDataRecord = {
   raw: JsonValue;
 };
 
+export type LatestProviderGame = {
+  providerId: string;
+  providerSlug: string;
+  snapshotId: string;
+  adapterVersion: string;
+  observedAt: Date;
+  importedAt: Date;
+  provenance: JsonValue;
+  externalGameId: string;
+  season: number;
+  week: number;
+  seasonType: "PRE" | "REG" | "POST";
+  kickoffAt: Date | null;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  neutralSite: boolean;
+  raw: JsonValue;
+};
+
 type TransactionClient = {
   query<T extends QueryResultRow = QueryResultRow>(
     text: string,
@@ -113,11 +147,13 @@ async function saveRejections(
   for (const rejection of rejections) {
     await client.query(
       `insert into provider_ingestion_rejections
-        (ingestion_run_id, record_index, raw_payload, validation_errors)
-       values ($1, $2, $3::jsonb, $4::jsonb)
-       on conflict (ingestion_run_id, record_index) do nothing`,
+        (ingestion_run_id, record_kind, record_index, raw_payload,
+         validation_errors)
+       values ($1, $2, $3, $4::jsonb, $5::jsonb)
+       on conflict (ingestion_run_id, record_kind, record_index) do nothing`,
       [
         runId,
+        rejection.kind,
         rejection.recordIndex,
         json(rejection.rawPayload),
         json(rejection.validationErrors),
@@ -151,6 +187,8 @@ export async function startProviderIngestionRun(
        returning id, provider_id, trigger_type, status, adapter_version,
          season, week, started_at, completed_at, records_received,
          records_imported, records_rejected, unmatched_player_count,
+         player_identities_received, player_identities_imported,
+         games_received, games_imported,
          error_details, created_at`,
       [
         provider.id,
@@ -180,12 +218,149 @@ export async function startProviderIngestionRun(
   });
 }
 
+async function persistPlayerIdentity(
+  client: TransactionClient,
+  input: {
+    snapshotId: string;
+    providerId: string;
+    descriptor: ProviderDescriptor;
+    identity: ProviderPlayerIdentity;
+  },
+): Promise<number> {
+  const aliases = new Map<
+    string,
+    { providerSlug: string; providerName: string; externalId: string }
+  >();
+  for (const alias of [
+    {
+      providerSlug: input.descriptor.slug,
+      providerName: input.descriptor.name,
+      externalId: input.identity.externalPlayerId,
+    },
+    ...input.identity.aliases,
+  ]) {
+    aliases.set(`${alias.providerSlug}:${alias.externalId}`, alias);
+  }
+
+  const aliasProviders = new Map<string, string>();
+  for (const alias of aliases.values()) {
+    if (alias.providerSlug === input.descriptor.slug) {
+      aliasProviders.set(alias.providerSlug, input.providerId);
+      continue;
+    }
+    const providerResult = await client.query<Provider>(
+      `insert into providers (slug, name)
+       values ($1, $2)
+       on conflict (slug) do update set name = excluded.name
+       returning id, slug, name, created_at`,
+      [alias.providerSlug, alias.providerName],
+    );
+    const provider = providerSchema.parse(providerResult.rows[0]);
+    aliasProviders.set(alias.providerSlug, provider.id);
+  }
+
+  const mappedPlayerIds = new Set<string>();
+  for (const alias of aliases.values()) {
+    const providerId = aliasProviders.get(alias.providerSlug);
+    if (!providerId) throw new Error("Provider alias was not resolved.");
+    const mappingResult = await client.query<{ player_id: string }>(
+      `select player_id
+         from player_external_ids
+        where provider_id = $1 and external_id = $2`,
+      [providerId, alias.externalId],
+    );
+    if (mappingResult.rows[0]) {
+      mappedPlayerIds.add(mappingResult.rows[0].player_id);
+    }
+  }
+
+  if (mappedPlayerIds.size > 1) {
+    throw new Error(
+      `Provider aliases for ${input.identity.externalPlayerId} map to conflicting canonical players.`,
+    );
+  }
+
+  let playerId = [...mappedPlayerIds][0];
+  if (!playerId) {
+    const playerResult = await client.query<{ id: string }>(
+      `insert into players
+        (full_name, position, nfl_team, bye_week, status)
+       values ($1, $2, $3, $4, $5)
+       returning id`,
+      [
+        input.identity.fullName,
+        input.identity.position,
+        input.identity.nflTeam,
+        input.identity.byeWeek,
+        input.identity.status,
+      ],
+    );
+    playerId = playerResult.rows[0]?.id;
+    if (!playerId) throw new Error("The canonical player was not created.");
+  }
+
+  for (const alias of aliases.values()) {
+    const providerId = aliasProviders.get(alias.providerSlug);
+    if (!providerId) throw new Error("Provider alias was not resolved.");
+    const insertedMapping: {
+      rows: { player_id: string }[];
+      rowCount: number | null;
+    } = await client.query<{ player_id: string }>(
+      `insert into player_external_ids
+        (player_id, provider_id, external_id)
+       values ($1, $2, $3)
+       on conflict (provider_id, external_id) do nothing
+       returning player_id`,
+      [playerId, providerId, alias.externalId],
+    );
+    const assignedPlayerId: string | undefined =
+      insertedMapping.rows[0]?.player_id ??
+      (
+        await client.query<{ player_id: string }>(
+          `select player_id
+             from player_external_ids
+            where provider_id = $1 and external_id = $2`,
+          [providerId, alias.externalId],
+        )
+      ).rows[0]?.player_id;
+    if (assignedPlayerId !== playerId) {
+      throw new Error(
+        `Provider alias ${alias.providerSlug}:${alias.externalId} was assigned to a conflicting canonical player.`,
+      );
+    }
+  }
+
+  const { raw, ...identityPayload } = input.identity;
+  identityPayload.aliases = [...aliases.values()];
+  const identityResult = await client.query(
+    `insert into provider_player_identity_records
+      (snapshot_id, player_id, external_player_id, normalized_payload,
+       raw_payload)
+     values ($1, $2, $3, $4::jsonb, $5::jsonb)
+     on conflict (snapshot_id, external_player_id) do nothing`,
+    [
+      input.snapshotId,
+      playerId,
+      input.identity.externalPlayerId,
+      json(identityPayload as JsonValue),
+      json(raw),
+    ],
+  );
+  return identityResult.rowCount ?? 0;
+}
+
 export async function persistProviderSnapshot(
   input: PersistProviderSnapshotInput,
 ): Promise<ProviderIngestionResult> {
   const descriptor = providerDescriptorSchema.parse(input.descriptor);
   const request = providerIngestionRequestSchema.parse(input.request);
   const snapshot = providerSnapshotMetadataSchema.parse(input.snapshot);
+  const playerIdentities = input.playerIdentities.map((identity) =>
+    providerPlayerIdentityCandidateSchema.parse(identity),
+  );
+  const games = input.games.map((game) =>
+    providerGameCandidateSchema.parse(game),
+  );
   if (snapshot.season !== request.season || snapshot.week !== request.week) {
     throw new Error(
       "Provider snapshot scope does not match the ingestion run.",
@@ -241,8 +416,32 @@ export async function persistProviderSnapshot(
       );
     }
 
+    const dataRejections = input.rejections.filter(
+      (rejection) => rejection.kind === "data",
+    ).length;
+    const identityRejections = input.rejections.filter(
+      (rejection) => rejection.kind === "player_identity",
+    ).length;
+    const gameRejections = input.rejections.filter(
+      (rejection) => rejection.kind === "game",
+    ).length;
+    const coverageGaps = (snapshot.provenance.coverage ?? [])
+      .filter((coverage) => coverage.status === "unavailable")
+      .map((coverage) => coverage.dataset);
+
+    let playerIdentitiesImported = 0;
     let recordsImported = 0;
+    let gamesImported = 0;
     if (!duplicate) {
+      for (const identity of playerIdentities) {
+        playerIdentitiesImported += await persistPlayerIdentity(client, {
+          snapshotId: persistedSnapshot.id,
+          providerId: input.providerId,
+          descriptor,
+          identity,
+        });
+      }
+
       for (const record of input.records) {
         const result = await client.query(
           `insert into provider_data_records
@@ -268,6 +467,33 @@ export async function persistProviderSnapshot(
         );
         recordsImported += result.rowCount ?? 0;
       }
+
+      for (const game of games) {
+        const result = await client.query(
+          `insert into provider_game_records
+            (snapshot_id, external_game_id, season, week, season_type,
+             kickoff_at, home_team, away_team, home_score, away_score,
+             neutral_site, raw_payload)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+             $12::jsonb)
+           on conflict (snapshot_id, external_game_id) do nothing`,
+          [
+            persistedSnapshot.id,
+            game.externalGameId,
+            game.season,
+            game.week,
+            game.seasonType,
+            game.kickoffAt === null ? null : new Date(game.kickoffAt),
+            game.homeTeam,
+            game.awayTeam,
+            game.homeScore,
+            game.awayScore,
+            game.neutralSite,
+            json(game.raw),
+          ],
+        );
+        gamesImported += result.rowCount ?? 0;
+      }
     }
 
     await saveRejections(client, input.runId, input.rejections);
@@ -280,7 +506,9 @@ export async function persistProviderSnapshot(
     );
     const unmatchedPlayerCount = unmatchedResult.rows[0]?.count ?? 0;
     const status: "succeeded" | "partial" =
-      input.rejections.length > 0 || unmatchedPlayerCount > 0
+      input.rejections.length > 0 ||
+      unmatchedPlayerCount > 0 ||
+      coverageGaps.length > 0
         ? "partial"
         : "succeeded";
     const errorDetails: JsonValue | null =
@@ -288,8 +516,14 @@ export async function persistProviderSnapshot(
         ? {
             rejectedRecords: input.rejections.length,
             unmatchedPlayerRecords: unmatchedPlayerCount,
+            coverageGaps,
           }
         : null;
+
+    const recordsReceived = input.records.length + dataRejections;
+    const playerIdentitiesReceived =
+      playerIdentities.length + identityRejections;
+    const gamesReceived = games.length + gameRejections;
 
     await client.query(
       `update provider_ingestion_runs set
@@ -299,16 +533,24 @@ export async function persistProviderSnapshot(
          records_imported = $5,
          records_rejected = $6,
          unmatched_player_count = $7,
-         error_details = $8::jsonb
+         player_identities_received = $8,
+         player_identities_imported = $9,
+         games_received = $10,
+         games_imported = $11,
+         error_details = $12::jsonb
        where id = $1`,
       [
         input.runId,
         status,
         input.importedAt,
-        input.records.length + input.rejections.length,
+        recordsReceived,
         recordsImported,
         input.rejections.length,
         unmatchedPlayerCount,
+        playerIdentitiesReceived,
+        playerIdentitiesImported,
+        gamesReceived,
+        gamesImported,
         errorDetails === null ? null : json(errorDetails),
       ],
     );
@@ -343,10 +585,15 @@ export async function persistProviderSnapshot(
       snapshotId: persistedSnapshot.id,
       status,
       duplicate,
-      recordsReceived: input.records.length + input.rejections.length,
+      recordsReceived,
       recordsImported,
       recordsRejected: input.rejections.length,
       unmatchedPlayerCount,
+      playerIdentitiesReceived,
+      playerIdentitiesImported,
+      gamesReceived,
+      gamesImported,
+      coverageGaps,
     };
   });
 }
@@ -359,12 +606,15 @@ export async function failProviderIngestionRun(
     await client.query(
       `update provider_ingestion_runs set
          status = 'failed', completed_at = $2, records_received = $3,
-         records_rejected = $4, error_details = $5::jsonb
+         player_identities_received = $4, games_received = $5,
+         records_rejected = $6, error_details = $7::jsonb
        where id = $1`,
       [
         input.runId,
         input.completedAt,
         input.recordsReceived,
+        input.playerIdentitiesReceived,
+        input.gamesReceived,
         input.rejections.length,
         json(input.errorDetails),
       ],
@@ -398,6 +648,11 @@ export async function failProviderIngestionRun(
       recordsImported: 0,
       recordsRejected: input.rejections.length,
       unmatchedPlayerCount: 0,
+      playerIdentitiesReceived: input.playerIdentitiesReceived,
+      playerIdentitiesImported: 0,
+      gamesReceived: input.gamesReceived,
+      gamesImported: 0,
+      coverageGaps: [],
     };
   });
 }
@@ -505,6 +760,133 @@ export async function listLatestPlayerData(input: {
     dataType: row.data_type,
     recordKey: row.record_key,
     normalized: row.normalized_payload,
+    raw: row.raw_payload,
+  }));
+}
+
+export const LATEST_MARKET_TRENDS_SQL = `with latest_snapshots as (
+  select distinct on (s.provider_id)
+         s.provider_id, s.id as snapshot_id
+    from provider_data_snapshots s
+    join provider_data_records r on r.snapshot_id = s.id
+   where r.data_type = 'market_trend'
+     and r.player_id is not null
+     and s.season = $1
+     and (($2::smallint is null and s.week is null) or s.week = $2)
+   order by s.provider_id, s.observed_at desc, s.imported_at desc, s.id desc
+)
+select
+       s.provider_id, p.slug as provider_slug, s.id as snapshot_id,
+       s.adapter_version, s.season, s.week, s.observed_at, s.imported_at,
+       s.provenance, r.player_id, r.external_player_id, r.data_type,
+       r.record_key, r.normalized_payload, r.raw_payload
+  from latest_snapshots latest
+  join provider_data_snapshots s on s.id = latest.snapshot_id
+  join provider_data_records r on r.snapshot_id = latest.snapshot_id
+  join providers p on p.id = s.provider_id
+ where r.data_type = 'market_trend'
+   and r.player_id is not null
+ order by p.slug, r.external_player_id, r.record_key`;
+
+/** Market popularity stays separately queryable from projections/rankings. */
+export async function listLatestMarketTrends(input: {
+  season: number;
+  week: number | null;
+}): Promise<LatestProviderDataRecord[]> {
+  const result = await query<LatestProviderDataRow>(LATEST_MARKET_TRENDS_SQL, [
+    input.season,
+    input.week,
+  ]);
+
+  return result.rows.map((row) => ({
+    providerId: row.provider_id,
+    providerSlug: row.provider_slug,
+    snapshotId: row.snapshot_id,
+    adapterVersion: row.adapter_version,
+    season: row.season,
+    week: row.week,
+    observedAt: row.observed_at,
+    importedAt: row.imported_at,
+    provenance: row.provenance,
+    playerId: row.player_id,
+    externalPlayerId: row.external_player_id,
+    dataType: row.data_type,
+    recordKey: row.record_key,
+    normalized: row.normalized_payload,
+    raw: row.raw_payload,
+  }));
+}
+
+type LatestProviderGameRow = QueryResultRow & {
+  provider_id: string;
+  provider_slug: string;
+  snapshot_id: string;
+  adapter_version: string;
+  observed_at: Date;
+  imported_at: Date;
+  provenance: JsonValue;
+  external_game_id: string;
+  season: number;
+  week: number;
+  season_type: "PRE" | "REG" | "POST";
+  kickoff_at: Date | null;
+  home_team: string;
+  away_team: string;
+  home_score: number | null;
+  away_score: number | null;
+  neutral_site: boolean;
+  raw_payload: JsonValue;
+};
+
+export const LATEST_GAMES_SQL = `with latest_snapshots as (
+  select distinct on (s.provider_id)
+         s.provider_id, s.id as snapshot_id
+    from provider_data_snapshots s
+    join provider_game_records g on g.snapshot_id = s.id
+   where g.season = $1 and g.week = $2
+   order by s.provider_id, s.observed_at desc, s.imported_at desc, s.id desc
+)
+select
+       s.provider_id, p.slug as provider_slug, s.id as snapshot_id,
+       s.adapter_version, s.observed_at, s.imported_at, s.provenance,
+       g.external_game_id, g.season, g.week, g.season_type, g.kickoff_at,
+       g.home_team, g.away_team, g.home_score, g.away_score,
+       g.neutral_site, g.raw_payload
+  from latest_snapshots latest
+  join provider_data_snapshots s on s.id = latest.snapshot_id
+  join provider_game_records g on g.snapshot_id = latest.snapshot_id
+  join providers p on p.id = s.provider_id
+ where g.season = $1 and g.week = $2
+ order by g.kickoff_at nulls last, g.external_game_id`;
+
+/** Games from the freshest immutable schedule snapshot for a season/week. */
+export async function listLatestGames(input: {
+  season: number;
+  week: number;
+}): Promise<LatestProviderGame[]> {
+  const result = await query<LatestProviderGameRow>(LATEST_GAMES_SQL, [
+    input.season,
+    input.week,
+  ]);
+
+  return result.rows.map((row) => ({
+    providerId: row.provider_id,
+    providerSlug: row.provider_slug,
+    snapshotId: row.snapshot_id,
+    adapterVersion: row.adapter_version,
+    observedAt: row.observed_at,
+    importedAt: row.imported_at,
+    provenance: row.provenance,
+    externalGameId: row.external_game_id,
+    season: row.season,
+    week: row.week,
+    seasonType: row.season_type,
+    kickoffAt: row.kickoff_at,
+    homeTeam: row.home_team,
+    awayTeam: row.away_team,
+    homeScore: row.home_score,
+    awayScore: row.away_score,
+    neutralSite: row.neutral_site,
     raw: row.raw_payload,
   }));
 }

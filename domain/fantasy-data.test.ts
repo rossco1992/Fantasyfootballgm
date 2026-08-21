@@ -4,6 +4,8 @@ import {
   FANTASY_DATA_TYPES,
   jsonValueSchema,
   normalizedFantasyDataSchema,
+  providerGameCandidateSchema,
+  providerPlayerIdentityCandidateSchema,
   providerRecordCandidateSchema,
 } from "@/domain/fantasy-data";
 
@@ -96,5 +98,41 @@ describe("normalized fantasy-data contracts", () => {
         expertCount: null,
       }).success,
     ).toBe(false);
+  });
+
+  it("validates provider-backed player aliases and schedule games", () => {
+    expect(
+      providerPlayerIdentityCandidateSchema.parse({
+        externalPlayerId: "00-0033280",
+        fullName: "Christian McCaffrey",
+        position: "RB",
+        nflTeam: "SF",
+        byeWeek: 14,
+        status: "active",
+        aliases: [
+          {
+            providerSlug: "sleeper",
+            providerName: "Sleeper",
+            externalId: "4034",
+          },
+        ],
+        raw: { gsis_id: "00-0033280" },
+      }),
+    ).toMatchObject({ aliases: [{ providerSlug: "sleeper" }] });
+    expect(
+      providerGameCandidateSchema.parse({
+        externalGameId: "2026_01_SF_SEA",
+        season: 2026,
+        week: 1,
+        seasonType: "REG",
+        kickoffAt: "2026-09-13T20:25:00.000Z",
+        homeTeam: "SEA",
+        awayTeam: "SF",
+        homeScore: null,
+        awayScore: null,
+        neutralSite: false,
+        raw: { game_id: "2026_01_SF_SEA" },
+      }),
+    ).toMatchObject({ homeTeam: "SEA", awayTeam: "SF" });
   });
 });

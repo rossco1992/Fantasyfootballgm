@@ -14,14 +14,18 @@ import {
 import {
   type JsonValue,
   type ProviderDescriptor,
+  type ProviderGame,
   type ProviderIngestionRequest,
+  type ProviderPlayerIdentity,
   type ProviderRecord,
   type ProviderSnapshotCandidate,
   type ProviderSnapshotMetadata,
   type RejectedProviderRecord,
   jsonValueSchema,
+  providerGameCandidateSchema,
   providerDescriptorSchema,
   providerIngestionRequestSchema,
+  providerPlayerIdentityCandidateSchema,
   providerRecordCandidateSchema,
   providerSnapshotMetadataSchema,
 } from "@/domain/fantasy-data";
@@ -57,7 +61,7 @@ export type ProviderFreshness = ProviderIngestionHealth & {
   isStale: boolean;
 };
 
-type IngestionOptions = {
+export type IngestionOptions = {
   store?: ProviderIngestionStore;
   clock?: () => Date;
 };
@@ -133,6 +137,8 @@ async function fail(
   errorDetails: JsonValue,
   recordsReceived = 0,
   rejections: RejectedProviderRecord[] = [],
+  playerIdentitiesReceived = 0,
+  gamesReceived = 0,
 ): Promise<ProviderIngestionOutcome> {
   const result = await store.failRun({
     runId: started.id,
@@ -141,6 +147,8 @@ async function fail(
     completedAt,
     errorDetails,
     recordsReceived,
+    playerIdentitiesReceived,
+    gamesReceived,
     rejections,
   });
   return { ...result, error: errorDetails };
@@ -182,6 +190,26 @@ export async function ingestProviderData<TRawPayload>(
     "records" in candidate
       ? candidate.records
       : undefined;
+  const candidatePlayers =
+    typeof candidate === "object" &&
+    candidate !== null &&
+    "players" in candidate
+      ? candidate.players
+      : [];
+  const candidateGames =
+    typeof candidate === "object" && candidate !== null && "games" in candidate
+      ? candidate.games
+      : [];
+
+  const recordsReceived = Array.isArray(candidateRecords)
+    ? candidateRecords.length
+    : 0;
+  const playerIdentitiesReceived = Array.isArray(candidatePlayers)
+    ? candidatePlayers.length
+    : 0;
+  const gamesReceived = Array.isArray(candidateGames)
+    ? candidateGames.length
+    : 0;
 
   const metadataResult = providerSnapshotMetadataSchema.safeParse(candidate);
   if (!metadataResult.success) {
@@ -194,7 +222,10 @@ export async function ingestProviderData<TRawPayload>(
         kind: "snapshot_validation_error",
         issues: issuesToJson(metadataResult.error.issues),
       },
-      Array.isArray(candidateRecords) ? candidateRecords.length : 0,
+      recordsReceived,
+      [],
+      playerIdentitiesReceived,
+      gamesReceived,
     );
   }
 
@@ -210,18 +241,38 @@ export async function ingestProviderData<TRawPayload>(
         requested: { season: request.season, week: request.week },
         received: { season: metadata.season, week: metadata.week },
       },
-      Array.isArray(candidateRecords) ? candidateRecords.length : 0,
+      recordsReceived,
+      [],
+      playerIdentitiesReceived,
+      gamesReceived,
     );
   }
 
-  if (!Array.isArray(candidateRecords)) {
-    return fail(store, started, descriptor, clock(), {
-      kind: "snapshot_validation_error",
-      message: "Adapter output must contain a records array.",
-    });
+  if (
+    !Array.isArray(candidateRecords) ||
+    !Array.isArray(candidatePlayers) ||
+    !Array.isArray(candidateGames)
+  ) {
+    return fail(
+      store,
+      started,
+      descriptor,
+      clock(),
+      {
+        kind: "snapshot_validation_error",
+        message:
+          "Adapter output must contain a records array; players and games must be arrays when provided.",
+      },
+      recordsReceived,
+      [],
+      playerIdentitiesReceived,
+      gamesReceived,
+    );
   }
 
   const records: ProviderRecord[] = [];
+  const playerIdentities: ProviderPlayerIdentity[] = [];
+  const games: ProviderGame[] = [];
   const rejections: RejectedProviderRecord[] = [];
   const recordIdentities = new Set<string>();
 
@@ -229,6 +280,7 @@ export async function ingestProviderData<TRawPayload>(
     const parsed = providerRecordCandidateSchema.safeParse(candidateRecord);
     if (!parsed.success) {
       rejections.push({
+        kind: "data",
         recordIndex,
         rawPayload: toJsonValue(candidateRecord),
         validationErrors: issuesToJson(parsed.error.issues),
@@ -243,6 +295,7 @@ export async function ingestProviderData<TRawPayload>(
     ].join(":");
     if (recordIdentities.has(identity)) {
       rejections.push({
+        kind: "data",
         recordIndex,
         rawPayload: parsed.data.raw,
         validationErrors: [
@@ -258,7 +311,88 @@ export async function ingestProviderData<TRawPayload>(
     records.push(parsed.data);
   });
 
-  if (records.length === 0) {
+  const playerIdentityKeys = new Set<string>();
+  candidatePlayers.forEach((candidatePlayer, recordIndex) => {
+    const parsed =
+      providerPlayerIdentityCandidateSchema.safeParse(candidatePlayer);
+    if (!parsed.success) {
+      rejections.push({
+        kind: "player_identity",
+        recordIndex,
+        rawPayload: toJsonValue(candidatePlayer),
+        validationErrors: issuesToJson(parsed.error.issues),
+      });
+      return;
+    }
+    if (playerIdentityKeys.has(parsed.data.externalPlayerId)) {
+      rejections.push({
+        kind: "player_identity",
+        recordIndex,
+        rawPayload: parsed.data.raw,
+        validationErrors: [
+          {
+            path: "externalPlayerId",
+            message: "Duplicate provider player identity within one snapshot.",
+          },
+        ],
+      });
+      return;
+    }
+    playerIdentityKeys.add(parsed.data.externalPlayerId);
+    playerIdentities.push(parsed.data);
+  });
+
+  const gameKeys = new Set<string>();
+  candidateGames.forEach((candidateGame, recordIndex) => {
+    const parsed = providerGameCandidateSchema.safeParse(candidateGame);
+    if (!parsed.success) {
+      rejections.push({
+        kind: "game",
+        recordIndex,
+        rawPayload: toJsonValue(candidateGame),
+        validationErrors: issuesToJson(parsed.error.issues),
+      });
+      return;
+    }
+    if (
+      parsed.data.season !== request.season ||
+      (request.week !== null && parsed.data.week !== request.week)
+    ) {
+      rejections.push({
+        kind: "game",
+        recordIndex,
+        rawPayload: parsed.data.raw,
+        validationErrors: [
+          {
+            path: "season/week",
+            message: "Game scope does not match the ingestion request.",
+          },
+        ],
+      });
+      return;
+    }
+    if (gameKeys.has(parsed.data.externalGameId)) {
+      rejections.push({
+        kind: "game",
+        recordIndex,
+        rawPayload: parsed.data.raw,
+        validationErrors: [
+          {
+            path: "externalGameId",
+            message: "Duplicate provider game within one snapshot.",
+          },
+        ],
+      });
+      return;
+    }
+    gameKeys.add(parsed.data.externalGameId);
+    games.push(parsed.data);
+  });
+
+  if (
+    records.length + playerIdentities.length + games.length === 0 &&
+    rejections.length > 0
+  ) {
     return fail(
       store,
       started,
@@ -270,6 +404,8 @@ export async function ingestProviderData<TRawPayload>(
       },
       candidateRecords.length,
       rejections,
+      candidatePlayers.length,
+      candidateGames.length,
     );
   }
 
@@ -283,6 +419,8 @@ export async function ingestProviderData<TRawPayload>(
       snapshot: metadata,
       sourceFingerprint: fingerprintSnapshot(descriptor, candidate),
       records,
+      playerIdentities,
+      games,
       rejections,
       importedAt: clock(),
     });
@@ -295,6 +433,8 @@ export async function ingestProviderData<TRawPayload>(
       errorToJson("persistence_error", error),
       candidateRecords.length,
       rejections,
+      candidatePlayers.length,
+      candidateGames.length,
     );
   }
 
@@ -306,6 +446,7 @@ export async function ingestProviderData<TRawPayload>(
             kind: "partial_import",
             rejectedRecords: result.recordsRejected,
             unmatchedPlayerRecords: result.unmatchedPlayerCount,
+            coverageGaps: result.coverageGaps,
           }
         : null,
   };

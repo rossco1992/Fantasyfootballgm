@@ -6,6 +6,7 @@ import {
   INGESTION_TRIGGERS,
   jsonValueSchema,
   normalizedFantasyDataSchema,
+  providerPlayerIdentitySchema,
   sourceProvenanceSchema,
 } from "@/domain/fantasy-data";
 import { PLAYER_POSITIONS, PLAYER_STATUSES } from "@/domain/player";
@@ -78,6 +79,10 @@ export const providerIngestionRunSchema = z.object({
   records_imported: z.number().int(),
   records_rejected: z.number().int(),
   unmatched_player_count: z.number().int(),
+  player_identities_received: z.number().int().default(0),
+  player_identities_imported: z.number().int().default(0),
+  games_received: z.number().int().default(0),
+  games_imported: z.number().int().default(0),
   error_details: jsonValueSchema.nullable(),
   created_at: z.date(),
 });
@@ -110,6 +115,37 @@ export const providerDataRecordSchema = z.object({
   created_at: z.date(),
 });
 export type ProviderDataRecord = z.infer<typeof providerDataRecordSchema>;
+
+export const providerPlayerIdentityRecordSchema = z.object({
+  id: z.string().uuid(),
+  snapshot_id: z.string().uuid(),
+  player_id: z.string().uuid(),
+  external_player_id: z.string(),
+  normalized_payload: providerPlayerIdentitySchema,
+  raw_payload: jsonValueSchema,
+  created_at: z.date(),
+});
+export type ProviderPlayerIdentityRecord = z.infer<
+  typeof providerPlayerIdentityRecordSchema
+>;
+
+export const providerGameRecordSchema = z.object({
+  id: z.string().uuid(),
+  snapshot_id: z.string().uuid(),
+  external_game_id: z.string(),
+  season: z.number().int(),
+  week: z.number().int(),
+  season_type: z.enum(["PRE", "REG", "POST"]),
+  kickoff_at: z.date().nullable(),
+  home_team: z.string(),
+  away_team: z.string(),
+  home_score: z.number().int().nullable(),
+  away_score: z.number().int().nullable(),
+  neutral_site: z.boolean(),
+  raw_payload: jsonValueSchema,
+  created_at: z.date(),
+});
+export type ProviderGameRecord = z.infer<typeof providerGameRecordSchema>;
 
 export const providerIngestionStateSchema = z.object({
   provider_id: z.string().uuid(),

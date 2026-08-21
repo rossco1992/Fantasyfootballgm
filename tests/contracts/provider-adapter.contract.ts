@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   providerDescriptorSchema,
+  providerGameCandidateSchema,
+  providerPlayerIdentityCandidateSchema,
   providerRecordCandidateSchema,
   providerSnapshotMetadataSchema,
   type ProviderIngestionRequest,
@@ -46,6 +48,23 @@ export function describeProviderAdapterContract<TRawPayload>(options: {
         return `${parsed.externalPlayerId}:${parsed.normalized.type}:${parsed.recordKey}`;
       });
       expect(new Set(identities).size).toBe(identities.length);
+
+      if (snapshot.players !== undefined) {
+        expect(Array.isArray(snapshot.players)).toBe(true);
+        expect(() =>
+          (snapshot.players as unknown[]).map((player) =>
+            providerPlayerIdentityCandidateSchema.parse(player),
+          ),
+        ).not.toThrow();
+      }
+      if (snapshot.games !== undefined) {
+        expect(Array.isArray(snapshot.games)).toBe(true);
+        expect(() =>
+          (snapshot.games as unknown[]).map((game) =>
+            providerGameCandidateSchema.parse(game),
+          ),
+        ).not.toThrow();
+      }
     });
   });
 }

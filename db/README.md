@@ -69,3 +69,8 @@ model used by every fantasy-data adapter:
 Use `db/repositories/provider-ingestion.ts`; callers should not write these
 tables directly. Freshest-player queries return the newest record per provider
 and record key for a player, season, week, and signal type.
+
+Migration `0005_historical_context_and_market_trends.sql` adds immutable player
+identity/crosswalk evidence and schedule games to the same provider snapshot.
+The repository exposes freshest-game and market-trend reads by season/week;
+market trends remain independent of projections.
