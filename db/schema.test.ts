@@ -55,6 +55,8 @@ describe("database schema and seed", () => {
         "provider_ingestion_runs",
         "provider_data_snapshots",
         "provider_data_records",
+        "provider_player_identity_records",
+        "provider_game_records",
         "provider_ingestion_rejections",
         "provider_ingestion_state",
       ]),
@@ -188,6 +190,25 @@ describe("database schema and seed", () => {
       [snapshotId],
     );
     await db.query(
+      `insert into provider_player_identity_records
+        (snapshot_id, player_id, external_player_id, normalized_payload,
+         raw_payload)
+       values ($1, 'aaaaaaaa-0000-0000-0000-000000000001', 'fixture-cmc',
+         '{"externalPlayerId":"fixture-cmc","fullName":"Christian McCaffrey","position":"RB","nflTeam":"SF","byeWeek":14,"status":"active","aliases":[]}'::jsonb,
+         '{"team":"SF"}'::jsonb)`,
+      [snapshotId],
+    );
+    await db.query(
+      `insert into provider_game_records
+        (snapshot_id, external_game_id, season, week, season_type,
+         kickoff_at, home_team, away_team, home_score, away_score,
+         neutral_site, raw_payload)
+       values ($1, '2026_01_SF_SEA', 2026, 1, 'REG',
+         '2026-09-13T20:25:00Z', 'SEA', 'SF', null, null, false,
+         '{"game_id":"2026_01_SF_SEA"}'::jsonb)`,
+      [snapshotId],
+    );
+    await db.query(
       `update provider_ingestion_runs
           set status = 'succeeded', completed_at = '2026-08-20T12:01:01Z'
         where id = $1`,
@@ -247,6 +268,20 @@ describe("database schema and seed", () => {
         [snapshotId],
       ),
     ).rejects.toThrow(/sealed/);
+
+    await expect(
+      db.query(
+        `update provider_player_identity_records
+            set raw_payload = '{}'::jsonb where snapshot_id = $1`,
+        [snapshotId],
+      ),
+    ).rejects.toThrow(/append-only/);
+
+    await expect(
+      db.query(`delete from provider_game_records where snapshot_id = $1`, [
+        snapshotId,
+      ]),
+    ).rejects.toThrow(/append-only/);
   });
 
   it("returns records only from each provider's freshest applicable snapshot", async () => {

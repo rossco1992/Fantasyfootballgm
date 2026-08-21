@@ -32,6 +32,10 @@ The supported normalized signals are projection, ranking/ECR, ADP, injury,
 news, historical performance, usage, and market trend. Raw provider values stay
 attached to every normalized record.
 
+Adapters may also provide explicit player identity aliases and normalized game
+records. These are validated and persisted inside the same immutable snapshot;
+provider names/IDs never leak into downstream domain models.
+
 `fixture/fixture-provider-adapter.ts` is the reference implementation. Apply
 the reusable contract suite in `tests/contracts/provider-adapter.contract.ts`
 to every future adapter.
@@ -39,3 +43,8 @@ to every future adapter.
 Provider adapters do not write to Postgres. They hand candidates to
 `services/provider-ingestion.ts`, which owns lifecycle, idempotency, and
 persistence orchestration.
+
+`nflverse/` supplies weekly roster identities, historical stats, play-level
+participation, and schedules. `sleeper/` supplies attributed add/drop market
+activity. Their source behavior and coverage rules are documented in
+[`docs/historical-context.md`](../docs/historical-context.md).

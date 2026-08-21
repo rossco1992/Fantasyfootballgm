@@ -3,7 +3,8 @@
 A deterministic, data-grounded fantasy football assistant for draft, waiver, and
 lineup decisions. The current foundation includes authentication, one-league
 configuration, canonical player identity, and a provider-neutral fantasy-data
-ingestion pipeline.
+ingestion pipeline with nflverse history/schedules and attributed Sleeper market
+trends.
 
 ## Tech stack
 
@@ -150,6 +151,8 @@ Provider ingestion is append-only: scheduled and on-demand attempts preserve
 raw values, validated normalized records, adapter version, timestamps, and
 provenance. See [`providers/README.md`](./providers/README.md) for the adapter
 contract and [`services/README.md`](./services/README.md) for orchestration.
+Historical-source behavior and attribution are documented in
+[`docs/historical-context.md`](./docs/historical-context.md).
 
 ### Local/development setup
 

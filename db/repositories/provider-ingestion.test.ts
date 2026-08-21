@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { query, withTransaction } from "@/db/client";
 import {
   failProviderIngestionRun,
+  listLatestGames,
+  listLatestMarketTrends,
   listLatestPlayerData,
   persistProviderSnapshot,
   startProviderIngestionRun,
@@ -90,6 +92,8 @@ const persistInput: PersistProviderSnapshotInput = {
       raw: { projected_points: "21.7" },
     },
   ],
+  playerIdentities: [],
+  games: [],
   rejections: [],
   importedAt,
 };
@@ -147,6 +151,99 @@ describe("provider ingestion repository", () => {
     expect(recordInsert?.[1]?.[6]).toBe('{"projected_points":"21.7"}');
   });
 
+  it("creates explicit canonical aliases before persisting player history and games", async () => {
+    const sleeperProviderId = "44444444-4444-4444-8444-444444444444";
+    const playerId = "aaaaaaaa-0000-4000-8000-000000000001";
+    client.query
+      .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: sleeperProviderId,
+            slug: "sleeper",
+            name: "Sleeper",
+            created_at: importedAt,
+          },
+        ],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [{ id: playerId }], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [{ player_id: playerId }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [{ player_id: playerId }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const result = await persistProviderSnapshot({
+      ...persistInput,
+      playerIdentities: [
+        {
+          externalPlayerId: "fixture-cmc",
+          fullName: "Christian McCaffrey",
+          position: "RB",
+          nflTeam: "SF",
+          byeWeek: 14,
+          status: "active",
+          aliases: [
+            {
+              providerSlug: "sleeper",
+              providerName: "Sleeper",
+              externalId: "4034",
+            },
+          ],
+          raw: { roster: true },
+        },
+      ],
+      games: [
+        {
+          externalGameId: "2026_01_SF_SEA",
+          season: 2026,
+          week: 1,
+          seasonType: "REG",
+          kickoffAt: "2026-09-13T20:25:00.000Z",
+          homeTeam: "SEA",
+          awayTeam: "SF",
+          homeScore: null,
+          awayScore: null,
+          neutralSite: false,
+          raw: { game_id: "2026_01_SF_SEA" },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      playerIdentitiesReceived: 1,
+      playerIdentitiesImported: 1,
+      gamesReceived: 1,
+      gamesImported: 1,
+      unmatchedPlayerCount: 0,
+    });
+    const identityInsertIndex = client.query.mock.calls.findIndex((call) =>
+      String(call[0]).includes("provider_player_identity_records"),
+    );
+    const dataInsertIndex = client.query.mock.calls.findIndex((call) =>
+      String(call[0]).includes("insert into provider_data_records"),
+    );
+    expect(identityInsertIndex).toBeGreaterThan(-1);
+    expect(identityInsertIndex).toBeLessThan(dataInsertIndex);
+    expect(
+      client.query.mock.calls.some((call) =>
+        String(call[0]).includes("insert into provider_game_records"),
+      ),
+    ).toBe(true);
+  });
+
   it("reuses an existing fingerprint without inserting duplicate records", async () => {
     client.query
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
@@ -178,6 +275,8 @@ describe("provider ingestion repository", () => {
       completedAt: importedAt,
       errorDetails: { kind: "provider_error" },
       recordsReceived: 0,
+      playerIdentitiesReceived: 0,
+      gamesReceived: 0,
       rejections: [],
     });
 
@@ -229,5 +328,83 @@ describe("provider ingestion repository", () => {
     expect(sql).toContain("with latest_snapshots as");
     expect(sql).toContain("distinct on (s.provider_id)");
     expect(sql).toContain("r.snapshot_id = latest.snapshot_id");
+  });
+
+  it("queries market trends independently from projection records", async () => {
+    vi.mocked(query).mockResolvedValue({
+      rows: [
+        {
+          provider_id: providerId,
+          provider_slug: "sleeper",
+          snapshot_id: snapshotId,
+          adapter_version: "1.0.0",
+          season: 2026,
+          week: 1,
+          observed_at: snapshotRow.observed_at,
+          imported_at: importedAt,
+          provenance: snapshotRow.provenance,
+          player_id: "aaaaaaaa-0000-0000-0000-000000000001",
+          external_player_id: "4034",
+          data_type: "market_trend",
+          record_key: "4034:market-trend:add:24h",
+          normalized_payload: {
+            type: "market_trend",
+            metrics: { adds: 120 },
+            direction: "rising",
+          },
+          raw_payload: { player_id: "4034", count: 120 },
+        },
+      ],
+    } as never);
+
+    const trends = await listLatestMarketTrends({ season: 2026, week: 1 });
+
+    expect(trends[0]).toMatchObject({
+      providerSlug: "sleeper",
+      dataType: "market_trend",
+      normalized: { direction: "rising" },
+    });
+    expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
+      "r.data_type = 'market_trend'",
+    );
+  });
+
+  it("queries games from the freshest provider snapshot by season/week", async () => {
+    vi.mocked(query).mockResolvedValue({
+      rows: [
+        {
+          provider_id: providerId,
+          provider_slug: "nflverse",
+          snapshot_id: snapshotId,
+          adapter_version: "1.0.0",
+          observed_at: snapshotRow.observed_at,
+          imported_at: importedAt,
+          provenance: snapshotRow.provenance,
+          external_game_id: "2026_01_SF_SEA",
+          season: 2026,
+          week: 1,
+          season_type: "REG",
+          kickoff_at: new Date("2026-09-13T20:25:00.000Z"),
+          home_team: "SEA",
+          away_team: "SF",
+          home_score: null,
+          away_score: null,
+          neutral_site: false,
+          raw_payload: { game_id: "2026_01_SF_SEA" },
+        },
+      ],
+    } as never);
+
+    const games = await listLatestGames({ season: 2026, week: 1 });
+
+    expect(games[0]).toMatchObject({
+      providerSlug: "nflverse",
+      externalGameId: "2026_01_SF_SEA",
+      homeTeam: "SEA",
+      awayTeam: "SF",
+    });
+    expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
+      "g.season = $1 and g.week = $2",
+    );
   });
 });
