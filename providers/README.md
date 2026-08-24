@@ -48,3 +48,8 @@ persistence orchestration.
 participation, and schedules. `sleeper/` supplies attributed add/drop market
 activity. Their source behavior and coverage rules are documented in
 [`docs/historical-context.md`](../docs/historical-context.md).
+
+`yahoo/` currently contains the NOC-52 OAuth and read-only capability validation
+harness. It deliberately does not normalize or persist Yahoo league state; the
+production adapter/connection remains NOC-53. See
+[`docs/yahoo-api-validation.md`](../docs/yahoo-api-validation.md).

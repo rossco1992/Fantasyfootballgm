@@ -154,6 +154,18 @@ contract and [`services/README.md`](./services/README.md) for orchestration.
 Historical-source behavior and attribution are documented in
 [`docs/historical-context.md`](./docs/historical-context.md).
 
+Yahoo access is being de-risked separately before the one-league connector is
+built. The NOC-52 harness validates an approved development application's OAuth
+and documented read-only resources without persisting raw private responses or
+attempting write-back. See
+[`docs/yahoo-api-validation.md`](./docs/yahoo-api-validation.md).
+
+```bash
+# after copying .env.example to .env.local and configuring approved Yahoo creds
+npm run yahoo:auth-url
+npm run yahoo:validate
+```
+
 ### Local/development setup
 
 You need a Postgres to point `DATABASE_URL` at (see `.env.example`). Two common
