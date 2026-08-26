@@ -3,8 +3,8 @@
 A deterministic, data-grounded fantasy football assistant for draft, waiver, and
 lineup decisions. The current foundation includes authentication, one-league
 configuration, canonical player identity, and a provider-neutral fantasy-data
-ingestion pipeline with nflverse history/schedules and attributed Sleeper market
-trends.
+ingestion pipeline with nflverse history/schedules, an attributed Sleeper player
+catalog, and attributed Sleeper market trends.
 
 ## Tech stack
 
@@ -113,22 +113,23 @@ integrations, and persistence separate.
 
 ## Scripts
 
-| Command                | Description                                  |
-| ---------------------- | -------------------------------------------- |
-| `npm run dev`          | Start the development server                 |
-| `npm run build`        | Production build                             |
-| `npm run start`        | Serve the production build                   |
-| `npm run lint`         | ESLint (Next.js + TypeScript rules)          |
-| `npm run typecheck`    | TypeScript type checking (`tsc --noEmit`)    |
-| `npm run test`         | Run unit/service tests once (Vitest)         |
-| `npm run test:watch`   | Vitest in watch mode                         |
-| `npm run test:e2e`     | Playwright end-to-end tests                  |
-| `npm run db:migrate`   | Apply pending database migrations            |
-| `npm run db:seed`      | Load development seed data (idempotent)      |
-| `npm run db:reset`     | Drop schema, re-migrate, re-seed (dev only)  |
-| `npm run format`       | Format with Prettier                         |
-| `npm run format:check` | Check formatting without writing             |
-| `npm run validate`     | `lint` + `typecheck` + `test` (quality gate) |
+| Command                          | Description                                  |
+| -------------------------------- | -------------------------------------------- |
+| `npm run dev`                    | Start the development server                 |
+| `npm run build`                  | Production build                             |
+| `npm run start`                  | Serve the production build                   |
+| `npm run lint`                   | ESLint (Next.js + TypeScript rules)          |
+| `npm run typecheck`              | TypeScript type checking (`tsc --noEmit`)    |
+| `npm run test`                   | Run unit/service tests once (Vitest)         |
+| `npm run test:watch`             | Vitest in watch mode                         |
+| `npm run test:e2e`               | Playwright end-to-end tests                  |
+| `npm run db:migrate`             | Apply pending database migrations            |
+| `npm run db:seed`                | Load development seed data (idempotent)      |
+| `npm run db:reset`               | Drop schema, re-migrate, re-seed (dev only)  |
+| `npm run players:import -- 2026` | Refresh the current NFL player catalog       |
+| `npm run format`                 | Format with Prettier                         |
+| `npm run format:check`           | Check formatting without writing             |
+| `npm run validate`               | `lint` + `typecheck` + `test` (quality gate) |
 
 ### End-to-end tests
 
@@ -153,6 +154,16 @@ provenance. See [`providers/README.md`](./providers/README.md) for the adapter
 contract and [`services/README.md`](./services/README.md) for orchestration.
 Historical-source behavior and attribution are documented in
 [`docs/historical-context.md`](./docs/historical-context.md).
+
+The draftable player catalog uses Sleeper's public NFL Players API as a
+personal-MVP identity source. It refreshes at most once daily, preserves the
+last successful snapshot, and intentionally contains no rankings, ADP, or
+projections. Sleeper documents its API for non-commercial use; commercial use
+requires separate permission. Run the on-demand import after migrations:
+
+```bash
+npm run players:import -- 2026
+```
 
 Yahoo access is being de-risked separately before the one-league connector is
 built. The NOC-52 harness validates an approved development application's OAuth

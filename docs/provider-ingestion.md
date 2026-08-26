@@ -36,6 +36,14 @@ future forecast-accuracy evaluation.
 NOC-61 extends the same sealed snapshot with canonical player identity evidence
 and games. See [`historical-context.md`](./historical-context.md).
 
+NOC-66 uses that identity path for the current Sleeper NFL player catalog. The
+catalog adapter has its own provider-health slug while also writing the native
+Sleeper player ID as an alias, so Sleeper market-trend records resolve to the
+same canonical player. A daily freshness gate avoids repeatedly downloading the
+large catalog. Catalog metadata is identity evidence only and must never be
+presented as rankings, ADP, or projections. Attribution and the documented
+personal/non-commercial licensing boundary are retained in snapshot provenance.
+
 ## Adding a provider
 
 1. Implement `FantasyDataProviderAdapter` from `providers/types.ts`.

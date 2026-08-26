@@ -38,7 +38,6 @@ export function describeProviderAdapterContract<TRawPayload>(options: {
       });
       expect(Array.isArray(snapshot.records)).toBe(true);
       const records = snapshot.records as unknown[];
-      expect(records.length).toBeGreaterThan(0);
       expect(() =>
         records.map((record) => providerRecordCandidateSchema.parse(record)),
       ).not.toThrow();
@@ -65,6 +64,12 @@ export function describeProviderAdapterContract<TRawPayload>(options: {
           ),
         ).not.toThrow();
       }
+
+      const contentCount =
+        records.length +
+        (Array.isArray(snapshot.players) ? snapshot.players.length : 0) +
+        (Array.isArray(snapshot.games) ? snapshot.games.length : 0);
+      expect(contentCount).toBeGreaterThan(0);
     });
   });
 }

@@ -169,6 +169,7 @@ describe("provider ingestion repository", () => {
       })
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       .mockResolvedValueOnce({ rows: [{ id: playerId }], rowCount: 1 })
       .mockResolvedValueOnce({
         rows: [{ player_id: playerId }],
@@ -242,6 +243,62 @@ describe("provider ingestion repository", () => {
         String(call[0]).includes("insert into provider_game_records"),
       ),
     ).toBe(true);
+  });
+
+  it("matches a manually created canonical player and refreshes its metadata", async () => {
+    const playerId = "aaaaaaaa-0000-4000-8000-000000000001";
+    const manualPlayer = {
+      id: playerId,
+      full_name: "Christian McCaffrey",
+      position: "RB",
+      nfl_team: null,
+      bye_week: null,
+      status: "unknown",
+      created_at: importedAt,
+      updated_at: importedAt,
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [manualPlayer], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ player_id: playerId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const result = await persistProviderSnapshot({
+      ...persistInput,
+      records: [],
+      playerIdentities: [
+        {
+          externalPlayerId: "4034",
+          fullName: "Christian McCaffrey",
+          position: "RB",
+          nflTeam: "SF",
+          byeWeek: null,
+          status: "active",
+          aliases: [],
+          raw: { player_id: "4034" },
+        },
+      ],
+    });
+
+    expect(result.playerIdentitiesImported).toBe(1);
+    expect(
+      client.query.mock.calls.some(
+        (call) =>
+          String(call[0]).includes("update players") &&
+          call[1]?.[0] === playerId &&
+          call[1]?.[3] === "SF",
+      ),
+    ).toBe(true);
+    expect(
+      client.query.mock.calls.some((call) =>
+        String(call[0]).includes("insert into players"),
+      ),
+    ).toBe(false);
   });
 
   it("reuses an existing fingerprint without inserting duplicate records", async () => {

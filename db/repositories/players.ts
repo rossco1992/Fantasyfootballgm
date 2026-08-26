@@ -10,8 +10,10 @@ import {
 import {
   type CanonicalPlayer,
   type CanonicalPlayerInput,
+  type DraftablePlayerQuery,
   canonicalPlayerInputSchema,
   canonicalPlayerSchema,
+  draftablePlayerQuerySchema,
   playerExternalIdentitySchema,
 } from "@/domain/player";
 
@@ -44,6 +46,41 @@ export async function listPlayers(): Promise<CanonicalPlayer[]> {
     `select ${PLAYER_COLUMNS}
        from players
       order by full_name`,
+  );
+  return result.rows.map((row) => mapPlayer(playerSchema.parse(row)));
+}
+
+export async function countDraftablePlayers(): Promise<number> {
+  const result = await query<{ count: number }>(
+    `select count(*)::int as count
+       from players
+      where status not in ('inactive', 'retired')`,
+  );
+  return result.rows[0]?.count ?? 0;
+}
+
+export async function searchDraftablePlayers(
+  input: DraftablePlayerQuery = {},
+): Promise<CanonicalPlayer[]> {
+  const filters = draftablePlayerQuerySchema.parse(input);
+  const result = await query<Player>(
+    `select ${PLAYER_COLUMNS}
+       from players
+      where status not in ('inactive', 'retired')
+        and ($1::text = '' or full_name ilike '%' || $1 || '%')
+        and ($2::text is null or position = $2)
+      order by
+        case position
+          when 'QB' then 1
+          when 'RB' then 2
+          when 'WR' then 3
+          when 'TE' then 4
+          when 'K' then 5
+          when 'DST' then 6
+        end,
+        full_name
+      limit $3`,
+    [filters.search, filters.position, filters.limit],
   );
   return result.rows.map((row) => mapPlayer(playerSchema.parse(row)));
 }
