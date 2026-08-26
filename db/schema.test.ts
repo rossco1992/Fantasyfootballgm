@@ -52,6 +52,7 @@ describe("database schema and seed", () => {
         "player_external_ids",
         "player_projections",
         "league_configurations",
+        "league_roster_assignments",
         "provider_ingestion_runs",
         "provider_data_snapshots",
         "provider_data_records",
@@ -144,6 +145,66 @@ describe("database schema and seed", () => {
         '66666666-6666-4666-8666-666666666666', 'Invalid Keeper League', 10,
         'keeper', 0, 'snake', 1, 'ppr', 1, 2, 2, 1, 1, 0, 1, 1, 6
       )`),
+    ).rejects.toThrow();
+  });
+
+  it("persists deterministic keeper history and blocks round conflicts", async () => {
+    const userId = "77777777-7777-4777-8777-777777777777";
+    const leagueId = "88888888-8888-4888-8888-888888888888";
+    await db.query(
+      `insert into league_configurations (
+        id, user_id, name, team_count, league_format, max_keepers_per_team,
+        draft_type, draft_position, scoring_preset, qb_slots, rb_slots,
+        wr_slots, te_slots, flex_slots, superflex_slots, k_slots, dst_slots,
+        bench_slots
+      ) values ($1, $2, 'Keeper League', 12, 'keeper', 3, 'snake', 3,
+        'ppr', 1, 2, 2, 1, 1, 0, 1, 1, 6)`,
+      [leagueId, userId],
+    );
+    await db.query(
+      `insert into league_roster_assignments (
+        league_id, player_id, fantasy_team_name, acquisition_type, is_keeper,
+        original_draft_season, original_draft_round, keeper_season,
+        keeper_cost_round
+      ) values ($1, 'aaaaaaaa-0000-0000-0000-000000000001', 'My Team',
+        'drafted', true, 2025, 2, 2026, 2)`,
+      [leagueId],
+    );
+
+    const stored = await db.query<{
+      original_draft_round: number;
+      keeper_cost_round: number;
+    }>(
+      `select original_draft_round, keeper_cost_round
+         from league_roster_assignments where league_id = $1`,
+      [leagueId],
+    );
+    expect(stored.rows).toEqual([
+      { original_draft_round: 2, keeper_cost_round: 2 },
+    ]);
+
+    await expect(
+      db.query(
+        `insert into league_roster_assignments (
+          league_id, player_id, fantasy_team_name, acquisition_type, is_keeper,
+          original_draft_season, original_draft_round, keeper_season,
+          keeper_cost_round
+        ) values ($1, 'aaaaaaaa-0000-0000-0000-000000000002', 'My Team',
+          'drafted', true, 2025, 2, 2026, 2)`,
+        [leagueId],
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      db.query(
+        `insert into league_roster_assignments (
+          league_id, player_id, fantasy_team_name, acquisition_type, is_keeper,
+          original_draft_season, original_draft_round, keeper_season,
+          keeper_cost_round
+        ) values ($1, 'aaaaaaaa-0000-0000-0000-000000000003', 'Other Team',
+          'waiver', true, 2025, 8, 2026, 8)`,
+        [leagueId],
+      ),
     ).rejects.toThrow();
   });
 
