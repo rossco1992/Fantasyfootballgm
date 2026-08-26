@@ -2,6 +2,7 @@ import type { QueryResultRow } from "pg";
 
 import { query, withTransaction } from "@/db/client";
 import {
+  type Player,
   type Provider,
   type ProviderDataSnapshot,
   type ProviderIngestionRun,
@@ -9,6 +10,7 @@ import {
   providerDataSnapshotSchema,
   providerIngestionRunSchema,
   providerIngestionStateSchema,
+  playerSchema,
   providerSchema,
 } from "@/db/types";
 import {
@@ -28,6 +30,7 @@ import {
   providerPlayerIdentityCandidateSchema,
   providerSnapshotMetadataSchema,
 } from "@/domain/fantasy-data";
+import { normalizePlayerName } from "@/domain/player";
 
 export type StartedProviderIngestionRun = {
   id: string;
@@ -281,6 +284,42 @@ async function persistPlayerIdentity(
   }
 
   let playerId = [...mappedPlayerIds][0];
+  let createdPlayer = false;
+  if (!playerId) {
+    const candidateResult = await client.query<Player>(
+      `select id, full_name, position, nfl_team, bye_week, status,
+              created_at, updated_at
+         from players
+        where position = $1`,
+      [input.identity.position],
+    );
+    const normalizedName = normalizePlayerName(input.identity.fullName);
+    const nameMatches = candidateResult.rows
+      .map((row) => playerSchema.parse(row))
+      .filter(
+        (candidate) =>
+          normalizePlayerName(candidate.full_name) === normalizedName,
+      );
+    const teamMatches = input.identity.nflTeam
+      ? nameMatches.filter(
+          (candidate) => candidate.nfl_team === input.identity.nflTeam,
+        )
+      : [];
+    const matched =
+      nameMatches.length === 1
+        ? nameMatches[0]
+        : teamMatches.length === 1
+          ? teamMatches[0]
+          : null;
+
+    if (nameMatches.length > 1 && !matched) {
+      throw new Error(
+        `Player identity ${input.identity.fullName} (${input.identity.position}) is ambiguous.`,
+      );
+    }
+    playerId = matched?.id;
+  }
+
   if (!playerId) {
     const playerResult = await client.query<{ id: string }>(
       `insert into players
@@ -297,6 +336,28 @@ async function persistPlayerIdentity(
     );
     playerId = playerResult.rows[0]?.id;
     if (!playerId) throw new Error("The canonical player was not created.");
+    createdPlayer = true;
+  }
+
+  if (!createdPlayer) {
+    await client.query(
+      `update players
+          set full_name = $2,
+              position = $3,
+              nfl_team = $4,
+              bye_week = $5,
+              status = $6,
+              updated_at = now()
+        where id = $1`,
+      [
+        playerId,
+        input.identity.fullName,
+        input.identity.position,
+        input.identity.nflTeam,
+        input.identity.byeWeek,
+        input.identity.status,
+      ],
+    );
   }
 
   for (const alias of aliases.values()) {

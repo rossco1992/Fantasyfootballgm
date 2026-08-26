@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { query } from "@/db/client";
-import { getPlayerByExternalId, updatePlayer } from "@/db/repositories/players";
+import {
+  countDraftablePlayers,
+  getPlayerByExternalId,
+  searchDraftablePlayers,
+  updatePlayer,
+} from "@/db/repositories/players";
 
 vi.mock("@/db/client", () => ({ query: vi.fn() }));
 
@@ -64,5 +69,27 @@ describe("canonical player repository", () => {
       status: "questionable",
     });
     expect(vi.mocked(query).mock.calls[0]?.[1]?.[0]).toBe(playerRow.id);
+  });
+
+  it("queries the draftable player pool by search and position", async () => {
+    vi.mocked(query).mockResolvedValue({ rows: [playerRow] } as never);
+
+    const players = await searchDraftablePlayers({
+      search: "Example",
+      position: "RB",
+      limit: 25,
+    });
+
+    expect(players).toHaveLength(1);
+    expect(vi.mocked(query).mock.calls[0]?.[1]).toEqual(["Example", "RB", 25]);
+    expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
+      "status not in ('inactive', 'retired')",
+    );
+  });
+
+  it("reports the available draftable player count", async () => {
+    vi.mocked(query).mockResolvedValue({ rows: [{ count: 642 }] } as never);
+
+    await expect(countDraftablePlayers()).resolves.toBe(642);
   });
 });

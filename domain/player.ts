@@ -35,10 +35,17 @@ export const canonicalPlayerSchema = canonicalPlayerInputSchema.extend({
   updatedAt: z.date(),
 });
 
+export const draftablePlayerQuerySchema = z.object({
+  search: z.string().trim().max(120).default(""),
+  position: z.enum(PLAYER_POSITIONS).nullable().default(null),
+  limit: z.number().int().min(1).max(500).default(250),
+});
+
 export type PlayerPosition = (typeof PLAYER_POSITIONS)[number];
 export type PlayerStatus = (typeof PLAYER_STATUSES)[number];
 export type CanonicalPlayerInput = z.infer<typeof canonicalPlayerInputSchema>;
 export type CanonicalPlayer = z.infer<typeof canonicalPlayerSchema>;
+export type DraftablePlayerQuery = z.input<typeof draftablePlayerQuerySchema>;
 
 export const playerExternalIdentitySchema = z.object({
   providerId: z.string().uuid(),
