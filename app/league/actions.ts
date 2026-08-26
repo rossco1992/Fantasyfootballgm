@@ -2,18 +2,10 @@
 
 import { redirect } from "next/navigation";
 
-import type { LeagueConfigurationInput } from "@/domain/league-configuration";
+import type { LeagueFormState } from "@/app/league/form-state";
 import { leagueConfigurationInputSchema } from "@/domain/league-configuration";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { saveLeagueConfiguration } from "@/services/league-configurations";
-
-export type LeagueFormState = {
-  status: "idle" | "error";
-  message?: string;
-  fieldErrors?: Partial<Record<keyof LeagueConfigurationInput, string[]>>;
-};
-
-export const INITIAL_LEAGUE_FORM_STATE: LeagueFormState = { status: "idle" };
 
 function numberValue(formData: FormData, name: string): number {
   return Number(formData.get(name));
