@@ -2,10 +2,8 @@
 
 import { useActionState, useState } from "react";
 
-import {
-  INITIAL_LEAGUE_FORM_STATE,
-  saveLeagueConfigurationAction,
-} from "@/app/league/actions";
+import { saveLeagueConfigurationAction } from "@/app/league/actions";
+import { INITIAL_LEAGUE_FORM_STATE } from "@/app/league/form-state";
 import type { LeagueConfigurationInput } from "@/domain/league-configuration";
 
 const fieldClass =
