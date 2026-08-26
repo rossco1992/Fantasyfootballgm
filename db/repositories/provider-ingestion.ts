@@ -345,7 +345,7 @@ async function persistPlayerIdentity(
           set full_name = $2,
               position = $3,
               nfl_team = $4,
-              bye_week = $5,
+              bye_week = coalesce($5, bye_week),
               status = $6,
               updated_at = now()
         where id = $1`,

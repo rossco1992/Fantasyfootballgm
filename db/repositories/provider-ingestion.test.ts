@@ -301,6 +301,43 @@ describe("provider ingestion repository", () => {
     ).toBe(false);
   });
 
+  it("preserves a known bye week when an identity catalog supplies null", async () => {
+    const playerId = "aaaaaaaa-0000-4000-8000-000000000002";
+    client.query
+      .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ player_id: playerId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [{ player_id: playerId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    await persistProviderSnapshot({
+      ...persistInput,
+      records: [],
+      playerIdentities: [
+        {
+          externalPlayerId: "runner-1",
+          fullName: "Example Runner",
+          position: "RB",
+          nflTeam: "SF",
+          byeWeek: null,
+          status: "active",
+          aliases: [],
+          raw: { player_id: "runner-1" },
+        },
+      ],
+    });
+
+    const update = client.query.mock.calls.find((call) =>
+      String(call[0]).includes("update players"),
+    );
+    expect(String(update?.[0])).toContain("bye_week = coalesce($5, bye_week)");
+    expect(update?.[1]?.[4]).toBeNull();
+  });
+
   it("reuses an existing fingerprint without inserting duplicate records", async () => {
     client.query
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
