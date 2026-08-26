@@ -27,6 +27,18 @@ const PLAYER_COLUMNS = `id, full_name, position, nfl_team, bye_week, status,
   created_at, updated_at`;
 const QUALIFIED_PLAYER_COLUMNS = `p.id, p.full_name, p.position, p.nfl_team,
   p.bye_week, p.status, p.created_at, p.updated_at`;
+const DRAFTABLE_CATALOG_PROVIDER = "sleeper-player-catalog";
+
+const LATEST_CATALOG_MEMBERSHIP_SQL = `exists (
+  select 1
+    from provider_player_identity_records identity_record
+    join provider_ingestion_state ingestion_state
+      on ingestion_state.latest_snapshot_id = identity_record.snapshot_id
+    join providers catalog_provider
+      on catalog_provider.id = ingestion_state.provider_id
+   where identity_record.player_id = players.id
+     and catalog_provider.slug = $1
+)`;
 
 function mapPlayer(row: Player): CanonicalPlayer {
   return canonicalPlayerSchema.parse({
@@ -54,7 +66,9 @@ export async function countDraftablePlayers(): Promise<number> {
   const result = await query<{ count: number }>(
     `select count(*)::int as count
        from players
-      where status not in ('inactive', 'retired')`,
+      where status not in ('inactive', 'retired')
+        and ${LATEST_CATALOG_MEMBERSHIP_SQL}`,
+    [DRAFTABLE_CATALOG_PROVIDER],
   );
   return result.rows[0]?.count ?? 0;
 }
@@ -67,8 +81,9 @@ export async function searchDraftablePlayers(
     `select ${PLAYER_COLUMNS}
        from players
       where status not in ('inactive', 'retired')
-        and ($1::text = '' or full_name ilike '%' || $1 || '%')
-        and ($2::text is null or position = $2)
+        and ${LATEST_CATALOG_MEMBERSHIP_SQL}
+        and ($2::text = '' or full_name ilike '%' || $2 || '%')
+        and ($3::text is null or position = $3)
       order by
         case position
           when 'QB' then 1
@@ -79,8 +94,13 @@ export async function searchDraftablePlayers(
           when 'DST' then 6
         end,
         full_name
-      limit $3`,
-    [filters.search, filters.position, filters.limit],
+      limit $4`,
+    [
+      DRAFTABLE_CATALOG_PROVIDER,
+      filters.search,
+      filters.position,
+      filters.limit,
+    ],
   );
   return result.rows.map((row) => mapPlayer(playerSchema.parse(row)));
 }

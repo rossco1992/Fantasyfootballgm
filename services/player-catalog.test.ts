@@ -6,6 +6,7 @@ import {
   runOnDemandProviderIngestion,
 } from "@/services/provider-ingestion";
 import {
+  currentNFLSeason,
   refreshSleeperPlayerCatalog,
   retrievePlayerCatalogSummary,
 } from "@/services/player-catalog";
@@ -33,6 +34,9 @@ const fresh = {
   isStale: false,
 };
 
+const lock = async <T>(_providerSlug: string, operation: () => Promise<T>) =>
+  operation();
+
 describe("player catalog service", () => {
   beforeEach(() => {
     vi.mocked(retrieveProviderFreshness).mockReset();
@@ -43,7 +47,9 @@ describe("player catalog service", () => {
   it("does not call Sleeper more than once while the daily catalog is fresh", async () => {
     vi.mocked(retrieveProviderFreshness).mockResolvedValue(fresh);
 
-    await expect(refreshSleeperPlayerCatalog(2026)).resolves.toMatchObject({
+    await expect(
+      refreshSleeperPlayerCatalog(2026, { lock }),
+    ).resolves.toMatchObject({
       kind: "skipped",
       reason: "fresh",
     });
@@ -69,7 +75,7 @@ describe("player catalog service", () => {
       error: null,
     });
 
-    const result = await refreshSleeperPlayerCatalog(2026);
+    const result = await refreshSleeperPlayerCatalog(2026, { lock });
 
     expect(result).toMatchObject({
       kind: "refreshed",
@@ -80,6 +86,29 @@ describe("player catalog service", () => {
       { season: 2026, week: null },
       expect.anything(),
     );
+  });
+
+  it("derives the NFL season across the January and March boundary", () => {
+    expect(currentNFLSeason(new Date("2027-01-15T12:00:00Z"))).toBe(2026);
+    expect(currentNFLSeason(new Date("2027-03-01T12:00:00Z"))).toBe(2027);
+  });
+
+  it("checks freshness only after entering the provider refresh lock", async () => {
+    vi.mocked(retrieveProviderFreshness).mockResolvedValue(fresh);
+    const events: string[] = [];
+
+    await refreshSleeperPlayerCatalog(2026, {
+      lock: async (providerSlug, operation) => {
+        events.push(`locked:${providerSlug}`);
+        const result = await operation();
+        events.push("unlocked");
+        return result;
+      },
+    });
+
+    expect(events).toEqual(["locked:sleeper-player-catalog", "unlocked"]);
+    expect(retrieveProviderFreshness).toHaveBeenCalledOnce();
+    expect(runOnDemandProviderIngestion).not.toHaveBeenCalled();
   });
 
   it("returns player count and provider freshness for the draft board", async () => {

@@ -1,12 +1,15 @@
 import { logoutAction } from "@/app/auth/actions";
 import { LeagueConfigurationForm } from "@/components/league/league-configuration-form";
+import { PlayerCatalogPanel } from "@/components/player-catalog/player-catalog-panel";
 import { RosterSetupPanel } from "@/components/roster/roster-setup-panel";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { retrieveLeagueConfiguration } from "@/services/league-configurations";
+import { retrievePlayerCatalogSummary } from "@/services/player-catalog";
 import { retrieveManualRoster } from "@/services/roster-setup";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export default async function DashboardPage({
   searchParams,
@@ -17,7 +20,10 @@ export default async function DashboardPage({
     requireAuthenticatedUser(),
     searchParams,
   ]);
-  const configuration = await retrieveLeagueConfiguration(user.id);
+  const [configuration, catalog] = await Promise.all([
+    retrieveLeagueConfiguration(user.id),
+    retrievePlayerCatalogSummary(),
+  ]);
   const assignments = configuration
     ? await retrieveManualRoster(user.id, configuration.id)
     : [];
@@ -61,6 +67,20 @@ export default async function DashboardPage({
           {params.message}
         </p>
       ) : null}
+
+      <PlayerCatalogPanel
+        lastSuccessAt={catalog.freshness?.lastSuccessAt?.toISOString() ?? null}
+        playerCount={catalog.playerCount}
+        status={
+          !catalog.freshness
+            ? "not_loaded"
+            : catalog.freshness.lastStatus === "failed"
+              ? "failed"
+              : catalog.freshness.isStale
+                ? "stale"
+                : "current"
+        }
+      />
 
       {configuration ? (
         <>
