@@ -5,7 +5,6 @@ import { LeagueConfigurationForm } from "@/components/league/league-configuratio
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 
 vi.mock("@/app/league/actions", () => ({
-  INITIAL_LEAGUE_FORM_STATE: { status: "idle" },
   saveLeagueConfigurationAction: vi.fn(),
 }));
 
