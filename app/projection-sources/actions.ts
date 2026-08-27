@@ -11,6 +11,8 @@ import {
 
 const MAX_CSV_BYTES = 2_000_000;
 
+class ProjectionCsvUploadError extends Error {}
+
 function integer(formData: FormData, name: string): number {
   return Number(String(formData.get(name) ?? ""));
 }
@@ -70,13 +72,17 @@ export async function importProjectionCsvAction(
   try {
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) {
-      throw new Error("Choose a non-empty CSV file.");
+      throw new ProjectionCsvUploadError("Choose a non-empty CSV file.");
     }
     if (file.size > MAX_CSV_BYTES) {
-      throw new Error("Projection CSV files must be 2 MB or smaller.");
+      throw new ProjectionCsvUploadError(
+        "Projection CSV files must be 2 MB or smaller.",
+      );
     }
     if (!file.name.toLowerCase().endsWith(".csv")) {
-      throw new Error("Projection imports must use a .csv file.");
+      throw new ProjectionCsvUploadError(
+        "Projection imports must use a .csv file.",
+      );
     }
     outcome = await importProjectionCsv({
       provider: String(formData.get("provider") ?? ""),
@@ -89,7 +95,9 @@ export async function importProjectionCsvAction(
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Projection CSV import failed.";
+      error instanceof ProjectionCsvUploadError
+        ? error.message
+        : "Projection CSV could not be imported. Check the provider, scope, and CSV format.";
     redirect(`/dashboard?error=${encodeURIComponent(message)}`);
   }
   revalidatePath("/dashboard");

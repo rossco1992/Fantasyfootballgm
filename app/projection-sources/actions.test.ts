@@ -125,4 +125,23 @@ describe("projection source actions", () => {
     expect(importProjectionCsv).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
   });
+
+  it("does not expose ingestion errors to the dashboard", async () => {
+    vi.mocked(importProjectionCsv).mockRejectedValue(
+      new Error("database connection details"),
+    );
+    const formData = new FormData();
+    formData.set("provider", "fantasypros");
+    formData.set("season", "2026");
+    formData.set("scoring", "ppr");
+    formData.set(
+      "file",
+      new File(["PLAYER NAME,POS,ECR\nExample Runner,RB,4"], "rankings.csv"),
+    );
+
+    await expect(importProjectionCsvAction(formData)).rejects.toThrow(
+      "REDIRECT:/dashboard?error=Projection%20CSV%20could%20not%20be%20imported.%20Check%20the%20provider%2C%20scope%2C%20and%20CSV%20format.",
+    );
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
 });

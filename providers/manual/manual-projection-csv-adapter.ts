@@ -262,6 +262,11 @@ export class ManualProjectionCsvAdapter implements FantasyDataProviderAdapter<Ma
     request: ProviderIngestionRequest,
   ): ProviderSnapshotCandidate {
     const rows = parseCsv(payload.csv).map(normalizedRow);
+    const normalizedPlayers = identities(this.provider, rows);
+    const normalizedRecords = records(this.provider, rows, this.scoring);
+    if (normalizedPlayers.length === 0 && normalizedRecords.length === 0) {
+      throw new Error("Projection CSV contained no recognized player records.");
+    }
     return {
       season: request.season,
       week: request.week,
@@ -284,8 +289,8 @@ export class ManualProjectionCsvAdapter implements FantasyDataProviderAdapter<Ma
           },
         ],
       },
-      players: identities(this.provider, rows),
-      records: records(this.provider, rows, this.scoring),
+      players: normalizedPlayers,
+      records: normalizedRecords,
       games: [],
     };
   }

@@ -55,4 +55,25 @@ describe("manual projection CSV adapter", () => {
       stats: { rushing_yards: 1080 },
     });
   });
+
+  it("rejects a CSV with no recognized player records", async () => {
+    const instance = new ManualProjectionCsvAdapter(
+      "fantasypros",
+      "UNKNOWN COLUMN\nvalue",
+      "empty.csv",
+      "2026-08-27T12:00:00.000Z",
+      "ppr",
+    );
+
+    expect(() =>
+      instance.normalize(
+        {
+          csv: "UNKNOWN COLUMN\nvalue",
+          fileName: "empty.csv",
+          observedAt: "2026-08-27T12:00:00.000Z",
+        },
+        request,
+      ),
+    ).toThrow("Projection CSV contained no recognized player records.");
+  });
 });
