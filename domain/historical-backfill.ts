@@ -23,7 +23,11 @@ export type HistoricalBackfillRange = z.infer<
 export class HistoricalBackfillValidationError extends Error {}
 
 export function latestCompletedNFLSeason(now = new Date()): number {
-  return now.getUTCFullYear() - 1;
+  // The prior calendar year's NFL regular season runs into January. Delay
+  // eligibility until February so Week 18 cannot be sealed from pregame files.
+  return now.getUTCMonth() === 0
+    ? now.getUTCFullYear() - 2
+    : now.getUTCFullYear() - 1;
 }
 
 export function validateHistoricalBackfillRange(

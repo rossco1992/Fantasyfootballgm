@@ -68,7 +68,8 @@ snapshot and records the failed attempt.
 ## Historical backfill operations
 
 NOC-68 operationalizes the nflverse adapter for completed regular seasons from
-2021 through the previous NFL season, weeks 1–18. The web dashboard can load a
+2021 through the previous NFL season, weeks 1–18. A season becomes eligible in
+February, after its January regular-season finale. The web dashboard can load a
 bounded range of up to four weeks at a time. This keeps authenticated Vercel
 requests within a predictable execution window while still allowing a phone or
 tablet operator to activate and retry data without terminal access.

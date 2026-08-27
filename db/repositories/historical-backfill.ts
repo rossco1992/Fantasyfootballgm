@@ -63,13 +63,14 @@ export async function hasCompletedHistoricalScope(
   week: number,
 ): Promise<boolean> {
   const result = await query<{ complete: boolean }>(
-    `select exists (
-       select 1
+    `select coalesce((
+       select run.status = 'succeeded'
          from provider_ingestion_runs run
          join providers provider on provider.id = run.provider_id
         where provider.slug = $1 and run.season = $2 and run.week = $3
-          and run.status = 'succeeded'
-     ) as complete`,
+        order by run.started_at desc, run.id desc
+        limit 1
+     ), false) as complete`,
     [providerSlug, season, week],
   );
   return result.rows[0]?.complete ?? false;
@@ -82,7 +83,23 @@ export async function listHistoricalBackfillScopes(
     `select distinct on (run.season, run.week)
             run.id as run_id, run.season, run.week, run.status,
             run.started_at, run.completed_at, run.records_received,
-            run.records_imported, run.records_rejected,
+            case
+              when run.records_imported = 0 then coalesce((
+                select count(*)::int
+                  from provider_data_records record
+                 where record.snapshot_id = (
+                   select snapshot.id
+                     from provider_data_snapshots snapshot
+                    where snapshot.provider_id = run.provider_id
+                      and snapshot.season = run.season
+                      and snapshot.week = run.week
+                    order by snapshot.imported_at desc, snapshot.id desc
+                    limit 1
+                 )
+              ), 0)
+              else run.records_imported
+            end as records_imported,
+            run.records_rejected,
             run.unmatched_player_count, run.player_identities_imported,
             run.games_imported, run.error_details,
             exists (

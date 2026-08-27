@@ -138,6 +138,25 @@ describe("nflverse provider adapter", () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
+  it("retries a season dataset after a transient unavailable response", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("offline", { status: 503 }))
+      .mockResolvedValueOnce(
+        new Response("season,week\n2025,1\n", { status: 200 }),
+      );
+    const client = new HttpNflverseDataClient(fetcher);
+    const sourceUrl = "https://example.test/2025.csv";
+
+    await expect(
+      client.fetchDataset("weekly_rosters", sourceUrl),
+    ).resolves.toMatchObject({ status: "unavailable" });
+    await expect(
+      client.fetchDataset("weekly_rosters", sourceUrl),
+    ).resolves.toMatchObject({ status: "available" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("normalizes canonical aliases, weekly history/usage, and schedule games", async () => {
     const instance = adapter();
     const snapshot = instance.normalize(await instance.fetch(request), request);

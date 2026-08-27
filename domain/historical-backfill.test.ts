@@ -34,5 +34,11 @@ describe("historical backfill range", () => {
     expect(latestCompletedNFLSeason(new Date("2026-08-27T12:00:00Z"))).toBe(
       2025,
     );
+    expect(latestCompletedNFLSeason(new Date("2027-01-01T12:00:00Z"))).toBe(
+      2025,
+    );
+    expect(latestCompletedNFLSeason(new Date("2027-02-01T12:00:00Z"))).toBe(
+      2026,
+    );
   });
 });

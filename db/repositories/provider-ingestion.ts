@@ -49,6 +49,7 @@ export type PersistProviderSnapshotInput = {
   games: ProviderGame[];
   rejections: RejectedProviderRecord[];
   importedAt: Date;
+  updateCanonicalPlayerMetadata?: boolean;
 };
 
 export type ProviderIngestionResult = {
@@ -322,6 +323,7 @@ async function persistPlayerIdentity(
     providerId: string;
     descriptor: ProviderDescriptor;
     identity: ProviderPlayerIdentity;
+    updateCanonicalPlayerMetadata: boolean;
   },
 ): Promise<PersistedPlayerIdentity> {
   const aliases = new Map<
@@ -405,9 +407,12 @@ async function persistPlayerIdentity(
       });
     }
     const conflictingAliases = primaryMapping
-      ? mappedAliases.filter(
-          (mapping) => mapping.playerId !== primaryMapping.playerId,
-        )
+      ? [
+          primaryMapping,
+          ...mappedAliases.filter(
+            (mapping) => mapping.playerId !== primaryMapping.playerId,
+          ),
+        ]
       : mappedAliases;
     for (const conflict of conflictingAliases) {
       await queuePlayerMatchReview(client, {
@@ -498,7 +503,7 @@ async function persistPlayerIdentity(
     strategy = "created_canonical";
   }
 
-  if (!createdPlayer) {
+  if (!createdPlayer && input.updateCanonicalPlayerMetadata) {
     await client.query(
       `update players
           set full_name = $2,
@@ -672,6 +677,8 @@ export async function persistProviderSnapshot(
           providerId: input.providerId,
           descriptor,
           identity,
+          updateCanonicalPlayerMetadata:
+            input.updateCanonicalPlayerMetadata !== false,
         });
         playerIdentitiesImported += persistedIdentity.imported;
         unresolvedIdentityCount += persistedIdentity.unresolved;
@@ -761,9 +768,19 @@ export async function persistProviderSnapshot(
 
     const unmatchedResult = await client.query<{ count: number }>(
       `select count(*)::int as count
-         from provider_data_records
-        where snapshot_id = $1 and player_id is null`,
-      [persistedSnapshot.id],
+         from provider_data_records record
+        where record.snapshot_id = $1
+          and record.player_id is null
+          and (
+            record.external_player_id is null
+            or not exists (
+              select 1
+                from player_external_ids identity
+               where identity.provider_id = $2
+                 and identity.external_id = record.external_player_id
+            )
+          )`,
+      [persistedSnapshot.id, input.providerId],
     );
     let unresolvedDuplicateIdentityCount = 0;
     if (duplicate) {

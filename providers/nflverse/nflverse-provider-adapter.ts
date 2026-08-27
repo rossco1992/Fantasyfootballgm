@@ -91,7 +91,11 @@ export class HttpNflverseDataClient implements NflverseDataClient {
     if (existing) return existing;
     const request = this.loadDataset(dataset, sourceUrl);
     this.requests.set(key, request);
-    return request;
+    const result = await request;
+    if (result.status === "unavailable" && this.requests.get(key) === request) {
+      this.requests.delete(key);
+    }
+    return result;
   }
 
   private async loadDataset(

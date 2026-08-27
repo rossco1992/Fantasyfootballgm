@@ -87,6 +87,7 @@ export async function backfillNflverseHistory(
         const outcome = await run(adapter, scope, {
           store: options.store,
           clock: options.clock,
+          updateCanonicalPlayerMetadata: false,
         });
         return { ...scope, kind: "attempted", outcome };
       },

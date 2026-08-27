@@ -19,7 +19,10 @@ describe("historical backfill repository", () => {
       hasCompletedHistoricalScope("nflverse", 2025, 1),
     ).resolves.toBe(true);
     expect(vi.mocked(query).mock.calls[0]?.[0]).toContain(
-      "run.status = 'succeeded'",
+      "select run.status = 'succeeded'",
+    );
+    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain(
+      "order by run.started_at desc, run.id desc",
     );
     expect(vi.mocked(query).mock.calls[0]?.[1]).toEqual(["nflverse", 2025, 1]);
   });
@@ -57,6 +60,12 @@ describe("historical backfill repository", () => {
     ]);
     expect(vi.mocked(query).mock.calls[0]?.[0]).toContain(
       "distinct on (run.season, run.week)",
+    );
+    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain(
+      "select count(*)::int",
+    );
+    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain(
+      "order by snapshot.imported_at desc, snapshot.id desc",
     );
   });
 });

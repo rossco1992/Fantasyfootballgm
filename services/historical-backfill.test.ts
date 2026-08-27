@@ -69,7 +69,7 @@ describe("historical backfill service", () => {
     expect(runOnDemandProviderIngestion).toHaveBeenCalledWith(
       expect.anything(),
       { season: 2025, week: 2 },
-      expect.anything(),
+      expect.objectContaining({ updateCanonicalPlayerMetadata: false }),
     );
   });
 
