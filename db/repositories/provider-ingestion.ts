@@ -405,9 +405,12 @@ async function persistPlayerIdentity(
       });
     }
     const conflictingAliases = primaryMapping
-      ? mappedAliases.filter(
-          (mapping) => mapping.playerId !== primaryMapping.playerId,
-        )
+      ? [
+          primaryMapping,
+          ...mappedAliases.filter(
+            (mapping) => mapping.playerId !== primaryMapping.playerId,
+          ),
+        ]
       : mappedAliases;
     for (const conflict of conflictingAliases) {
       await queuePlayerMatchReview(client, {
@@ -761,9 +764,19 @@ export async function persistProviderSnapshot(
 
     const unmatchedResult = await client.query<{ count: number }>(
       `select count(*)::int as count
-         from provider_data_records
-        where snapshot_id = $1 and player_id is null`,
-      [persistedSnapshot.id],
+         from provider_data_records record
+        where record.snapshot_id = $1
+          and record.player_id is null
+          and (
+            record.external_player_id is null
+            or not exists (
+              select 1
+                from player_external_ids identity
+               where identity.provider_id = $2
+                 and identity.external_id = record.external_player_id
+            )
+          )`,
+      [persistedSnapshot.id, input.providerId],
     );
     let unresolvedDuplicateIdentityCount = 0;
     if (duplicate) {
