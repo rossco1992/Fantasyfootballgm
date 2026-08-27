@@ -60,6 +60,8 @@ describe("database schema and seed", () => {
         "provider_game_records",
         "provider_ingestion_rejections",
         "provider_ingestion_state",
+        "player_match_reviews",
+        "player_match_audit_events",
       ]),
     );
   });
@@ -453,6 +455,93 @@ describe("database schema and seed", () => {
         where pr.slug = 'mock-adp' and x.external_id = 'adp-4029'`,
     );
     expect(result.rows[0]?.full_name).toBe("Christian McCaffrey");
+  });
+
+  it("applies durable manual aliases to older immutable provider records", async () => {
+    const providerId = "eeeeeeee-1111-4111-8111-111111111111";
+    const runId = "eeeeeeee-2222-4222-8222-222222222222";
+    const snapshotId = "eeeeeeee-3333-4333-8333-333333333333";
+    const playerId = "aaaaaaaa-0000-0000-0000-000000000001";
+    await db.query(
+      `insert into providers (id, slug, name)
+       values ($1, 'manual-resolution-fixture', 'Manual Resolution Fixture')`,
+      [providerId],
+    );
+    await db.query(
+      `insert into provider_ingestion_runs
+        (id, provider_id, trigger_type, status, adapter_version, season, week,
+         started_at)
+       values ($1, $2, 'on_demand', 'running', '1.0.0', 2026, 3,
+         '2026-08-26T12:00:00Z')`,
+      [runId, providerId],
+    );
+    await db.query(
+      `insert into provider_data_snapshots
+        (id, provider_id, ingestion_run_id, source_fingerprint,
+         adapter_version, season, week, observed_at, imported_at, provenance)
+       values ($1, $2, $3, $4, '1.0.0', 2026, 3,
+         '2026-08-26T12:00:00Z', '2026-08-26T12:01:00Z',
+         '{"source":"Manual Resolution Fixture","sourceId":"fixture","sourceUrl":null,"notes":[]}'::jsonb)`,
+      [snapshotId, providerId, runId, "f".repeat(64)],
+    );
+    await db.query(
+      `insert into provider_data_records
+        (snapshot_id, player_id, external_player_id, data_type, record_key,
+         normalized_payload, raw_payload)
+       values ($1, null, 'unmatched-cmc', 'projection', 'unmatched-cmc:ppr',
+         '{"type":"projection","scoring":"ppr","projectedPoints":18,"stats":{}}'::jsonb,
+         '{"points":18}'::jsonb)`,
+      [snapshotId],
+    );
+    await db.query(
+      `update provider_ingestion_runs
+          set status = 'succeeded', completed_at = '2026-08-26T12:01:00Z'
+        where id = $1`,
+      [runId],
+    );
+
+    const before = await db.query(LATEST_PLAYER_DATA_SQL, [
+      playerId,
+      "projection",
+      2026,
+      3,
+    ]);
+    expect(before.rows).toHaveLength(0);
+
+    await db.query(
+      `insert into player_external_ids (player_id, provider_id, external_id)
+       values ($1, $2, 'unmatched-cmc')`,
+      [playerId, providerId],
+    );
+    const after = await db.query(LATEST_PLAYER_DATA_SQL, [
+      playerId,
+      "projection",
+      2026,
+      3,
+    ]);
+    expect(after.rows).toHaveLength(1);
+  });
+
+  it("keeps player matching audit events append-only", async () => {
+    const auditId = "eeeeeeee-4444-4444-8444-444444444444";
+    await db.query(
+      `insert into player_match_audit_events
+        (id, provider_id, external_player_id, player_id, event_type,
+         strategy, evidence)
+       values ($1, '11111111-1111-1111-1111-111111111111', 'csv-cmc',
+         'aaaaaaaa-0000-0000-0000-000000000001', 'matched',
+         'provider_external_id', '{"source":"test"}'::jsonb)`,
+      [auditId],
+    );
+
+    await expect(
+      db.query(
+        `update player_match_audit_events
+            set evidence = '{"changed":true}'::jsonb
+          where id = $1`,
+        [auditId],
+      ),
+    ).rejects.toThrow(/append-only/);
   });
 
   it("keeps player identity stable through team changes and free agency", async () => {

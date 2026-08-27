@@ -1,6 +1,8 @@
 # Canonical Player Identity and Matching
 
-NOC-9 completes the application-owned NFL player identity required by ADR-002.
+NOC-9 establishes the application-owned NFL player identity required by
+ADR-002. NOC-11 makes that identity safe across provider imports with durable
+review, override, and audit records.
 
 ## Canonical fields
 
@@ -36,8 +38,17 @@ NOC-9 completes the application-owned NFL player identity required by ADR-002.
    tie-breaker.
 4. If the result is still ambiguous, return all candidate IDs for review. Never
    silently merge or create a provider mapping from an ambiguous match.
-5. If there is no candidate, return unmatched so an ingestion service can
-   create a new canonical player and then attach the provider ID.
+5. If a provider supplies authoritative identity data and there is no
+   candidate, create a canonical player and attach its provider aliases.
+6. If a signal record (projection, ranking, ADP, injury, usage, or trend) has no
+   mapping, persist the immutable source record without a player and place its
+   external ID in `player_match_reviews`.
+
+Ambiguous identity records and their related signal rows are quarantined from
+recommendations. An authenticated manual resolution writes the durable
+`player_external_ids` alias, closes the review, and appends a
+`player_match_audit_events` record. Read-time resolution lets that correction
+apply to older immutable snapshots without rewriting source evidence.
 
 The pure implementation is in `domain/player.ts`. Provider adapters normalize
 their source data before invoking this strategy; repository functions persist

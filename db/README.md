@@ -74,3 +74,8 @@ Migration `0005_historical_context_and_market_trends.sql` adds immutable player
 identity/crosswalk evidence and schedule games to the same provider snapshot.
 The repository exposes freshest-game and market-trend reads by season/week;
 market trends remain independent of projections.
+
+Migration `0007_player_matching_and_data_health.sql` adds the durable
+`player_match_reviews` queue and append-only `player_match_audit_events`.
+Manual resolutions are stored as canonical provider aliases, so they survive
+future imports and resolve older immutable records at read time.

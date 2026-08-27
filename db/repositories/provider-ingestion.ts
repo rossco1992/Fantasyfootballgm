@@ -30,7 +30,7 @@ import {
   providerPlayerIdentityCandidateSchema,
   providerSnapshotMetadataSchema,
 } from "@/domain/fantasy-data";
-import { normalizePlayerName } from "@/domain/player";
+import { matchPlayerIdentity } from "@/domain/player";
 
 export type StartedProviderIngestionRun = {
   id: string;
@@ -138,8 +138,101 @@ type TransactionClient = {
   ): Promise<{ rows: T[]; rowCount: number | null }>;
 };
 
+type PlayerMatchStrategy =
+  | "provider_external_id"
+  | "provider_alias"
+  | "normalized_name_position"
+  | "normalized_name_position_team"
+  | "created_canonical";
+
+type PersistedPlayerIdentity = {
+  imported: number;
+  unresolved: number;
+};
+
 function json(value: JsonValue): string {
   return JSON.stringify(value);
+}
+
+async function queuePlayerMatchReview(
+  client: TransactionClient,
+  input: {
+    providerId: string;
+    externalPlayerId: string;
+    runId: string;
+    reason: "unmatched" | "ambiguous" | "conflicting_external_ids";
+    candidatePlayerIds?: string[];
+    evidence: JsonValue;
+  },
+): Promise<void> {
+  const candidatePlayerIds = [...new Set(input.candidatePlayerIds ?? [])];
+  await client.query(
+    `insert into player_match_reviews
+      (provider_id, external_player_id, latest_ingestion_run_id, reason,
+       candidate_player_ids, evidence)
+     values ($1, $2, $3, $4, $5::uuid[], $6::jsonb)
+     on conflict (provider_id, external_player_id) do update set
+       latest_ingestion_run_id = excluded.latest_ingestion_run_id,
+       reason = excluded.reason,
+       status = 'open',
+       candidate_player_ids = excluded.candidate_player_ids,
+       evidence = excluded.evidence,
+       occurrences = player_match_reviews.occurrences + 1,
+       resolved_player_id = null,
+       resolved_by_user_id = null,
+       resolved_at = null,
+       last_seen_at = now()`,
+    [
+      input.providerId,
+      input.externalPlayerId,
+      input.runId,
+      input.reason,
+      candidatePlayerIds,
+      json(input.evidence),
+    ],
+  );
+  await client.query(
+    `insert into player_match_audit_events
+      (provider_id, external_player_id, ingestion_run_id, event_type,
+       strategy, candidate_player_ids, evidence)
+     values ($1, $2, $3, 'queued', 'none', $4::uuid[], $5::jsonb)`,
+    [
+      input.providerId,
+      input.externalPlayerId,
+      input.runId,
+      candidatePlayerIds,
+      json(input.evidence),
+    ],
+  );
+}
+
+async function auditAutomatedPlayerMatch(
+  client: TransactionClient,
+  input: {
+    providerId: string;
+    externalPlayerId: string;
+    runId: string;
+    playerId: string;
+    eventType: "matched" | "created";
+    strategy: PlayerMatchStrategy;
+    evidence: JsonValue;
+  },
+): Promise<void> {
+  await client.query(
+    `insert into player_match_audit_events
+      (provider_id, external_player_id, ingestion_run_id, player_id,
+       event_type, strategy, evidence)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [
+      input.providerId,
+      input.externalPlayerId,
+      input.runId,
+      input.playerId,
+      input.eventType,
+      input.strategy,
+      json(input.evidence),
+    ],
+  );
 }
 
 async function saveRejections(
@@ -224,12 +317,13 @@ export async function startProviderIngestionRun(
 async function persistPlayerIdentity(
   client: TransactionClient,
   input: {
+    runId: string;
     snapshotId: string;
     providerId: string;
     descriptor: ProviderDescriptor;
     identity: ProviderPlayerIdentity;
   },
-): Promise<number> {
+): Promise<PersistedPlayerIdentity> {
   const aliases = new Map<
     string,
     { providerSlug: string; providerName: string; externalId: string }
@@ -263,6 +357,12 @@ async function persistPlayerIdentity(
   }
 
   const mappedPlayerIds = new Set<string>();
+  const mappedAliases: {
+    alias: { providerSlug: string; providerName: string; externalId: string };
+    providerId: string;
+    playerId: string;
+  }[] = [];
+  let mappedByPrimaryProvider = false;
   for (const alias of aliases.values()) {
     const providerId = aliasProviders.get(alias.providerSlug);
     if (!providerId) throw new Error("Provider alias was not resolved.");
@@ -273,18 +373,69 @@ async function persistPlayerIdentity(
       [providerId, alias.externalId],
     );
     if (mappingResult.rows[0]) {
-      mappedPlayerIds.add(mappingResult.rows[0].player_id);
+      const playerId = mappingResult.rows[0].player_id;
+      mappedPlayerIds.add(playerId);
+      mappedAliases.push({ alias, providerId, playerId });
+      if (alias.providerSlug === input.descriptor.slug) {
+        mappedByPrimaryProvider = true;
+      }
     }
   }
 
   if (mappedPlayerIds.size > 1) {
-    throw new Error(
-      `Provider aliases for ${input.identity.externalPlayerId} map to conflicting canonical players.`,
+    const candidatePlayerIds = [...mappedPlayerIds];
+    const primaryMapping = mappedAliases.find(
+      (mapping) => mapping.alias.providerSlug === input.descriptor.slug,
     );
+    if (!primaryMapping) {
+      await queuePlayerMatchReview(client, {
+        providerId: input.providerId,
+        externalPlayerId: input.identity.externalPlayerId,
+        runId: input.runId,
+        reason: "conflicting_external_ids",
+        candidatePlayerIds,
+        evidence: {
+          sourceProvider: input.descriptor.slug,
+          sourceExternalPlayerId: input.identity.externalPlayerId,
+          conflictingProviders: mappedAliases.map(
+            (mapping) => mapping.alias.providerSlug,
+          ),
+          raw: input.identity.raw,
+        },
+      });
+    }
+    const conflictingAliases = primaryMapping
+      ? [
+          primaryMapping,
+          ...mappedAliases.filter(
+            (mapping) => mapping.playerId !== primaryMapping.playerId,
+          ),
+        ]
+      : mappedAliases;
+    for (const conflict of conflictingAliases) {
+      await queuePlayerMatchReview(client, {
+        providerId: conflict.providerId,
+        externalPlayerId: conflict.alias.externalId,
+        runId: input.runId,
+        reason: "conflicting_external_ids",
+        candidatePlayerIds,
+        evidence: {
+          sourceProvider: input.descriptor.slug,
+          sourceExternalPlayerId: input.identity.externalPlayerId,
+          conflictingProvider: conflict.alias.providerSlug,
+          conflictingExternalPlayerId: conflict.alias.externalId,
+          raw: input.identity.raw,
+        },
+      });
+    }
+    return { imported: 0, unresolved: 1 };
   }
 
   let playerId = [...mappedPlayerIds][0];
   let createdPlayer = false;
+  let strategy: PlayerMatchStrategy = mappedByPrimaryProvider
+    ? "provider_external_id"
+    : "provider_alias";
   if (!playerId) {
     const candidateResult = await client.query<Player>(
       `select id, full_name, position, nfl_team, bye_week, status,
@@ -293,31 +444,41 @@ async function persistPlayerIdentity(
         where position = $1`,
       [input.identity.position],
     );
-    const normalizedName = normalizePlayerName(input.identity.fullName);
-    const nameMatches = candidateResult.rows
-      .map((row) => playerSchema.parse(row))
-      .filter(
-        (candidate) =>
-          normalizePlayerName(candidate.full_name) === normalizedName,
-      );
-    const teamMatches = input.identity.nflTeam
-      ? nameMatches.filter(
-          (candidate) => candidate.nfl_team === input.identity.nflTeam,
-        )
-      : [];
-    const matched =
-      nameMatches.length === 1
-        ? nameMatches[0]
-        : teamMatches.length === 1
-          ? teamMatches[0]
-          : null;
+    const candidates = candidateResult.rows.map((row) => {
+      const candidate = playerSchema.parse(row);
+      return {
+        id: candidate.id,
+        fullName: candidate.full_name,
+        position: candidate.position,
+        nflTeam: candidate.nfl_team,
+        externalIds: [],
+      };
+    });
+    const match = matchPlayerIdentity(
+      {
+        fullName: input.identity.fullName,
+        position: input.identity.position,
+        nflTeam: input.identity.nflTeam,
+      },
+      candidates,
+    );
 
-    if (nameMatches.length > 1 && !matched) {
-      throw new Error(
-        `Player identity ${input.identity.fullName} (${input.identity.position}) is ambiguous.`,
-      );
+    if (match.kind === "ambiguous") {
+      await queuePlayerMatchReview(client, {
+        providerId: input.providerId,
+        externalPlayerId: input.identity.externalPlayerId,
+        runId: input.runId,
+        reason: "ambiguous",
+        candidatePlayerIds: match.candidateIds,
+        evidence: input.identity.raw,
+      });
+      return { imported: 0, unresolved: 1 };
     }
-    playerId = matched?.id;
+    if (match.kind === "matched") {
+      playerId = match.playerId;
+      strategy = match.strategy as
+        "normalized_name_position" | "normalized_name_position_team";
+    }
   }
 
   if (!playerId) {
@@ -337,6 +498,7 @@ async function persistPlayerIdentity(
     playerId = playerResult.rows[0]?.id;
     if (!playerId) throw new Error("The canonical player was not created.");
     createdPlayer = true;
+    strategy = "created_canonical";
   }
 
   if (!createdPlayer) {
@@ -407,7 +569,16 @@ async function persistPlayerIdentity(
       json(raw),
     ],
   );
-  return identityResult.rowCount ?? 0;
+  await auditAutomatedPlayerMatch(client, {
+    providerId: input.providerId,
+    externalPlayerId: input.identity.externalPlayerId,
+    runId: input.runId,
+    playerId,
+    eventType: createdPlayer ? "created" : "matched",
+    strategy,
+    evidence: input.identity.raw,
+  });
+  return { imported: identityResult.rowCount ?? 0, unresolved: 0 };
 }
 
 export async function persistProviderSnapshot(
@@ -491,31 +662,46 @@ export async function persistProviderSnapshot(
       .map((coverage) => coverage.dataset);
 
     let playerIdentitiesImported = 0;
+    let unresolvedIdentityCount = 0;
+    const unresolvedIdentityExternalIds = new Set<string>();
+    const unresolvedRecordExternalIds = new Set<string>();
     let recordsImported = 0;
     let gamesImported = 0;
     if (!duplicate) {
       for (const identity of playerIdentities) {
-        playerIdentitiesImported += await persistPlayerIdentity(client, {
+        const persistedIdentity = await persistPlayerIdentity(client, {
+          runId: input.runId,
           snapshotId: persistedSnapshot.id,
           providerId: input.providerId,
           descriptor,
           identity,
         });
+        playerIdentitiesImported += persistedIdentity.imported;
+        unresolvedIdentityCount += persistedIdentity.unresolved;
+        if (persistedIdentity.unresolved) {
+          unresolvedIdentityExternalIds.add(identity.externalPlayerId);
+        }
       }
 
       for (const record of input.records) {
-        const result = await client.query(
+        const identityIsQuarantined = unresolvedIdentityExternalIds.has(
+          record.externalPlayerId,
+        );
+        const result = await client.query<{ player_id: string | null }>(
           `insert into provider_data_records
             (snapshot_id, player_id, external_player_id, data_type,
              record_key, normalized_payload, raw_payload)
            values (
              $1,
-             (select player_id from player_external_ids
-               where provider_id = $2 and external_id = $3 limit 1),
+             case when $8::boolean then null else
+               (select player_id from player_external_ids
+                 where provider_id = $2 and external_id = $3 limit 1)
+             end,
              $3, $4, $5, $6::jsonb, $7::jsonb
            )
            on conflict (snapshot_id, data_type, external_player_id, record_key)
-           do nothing`,
+           do nothing
+           returning player_id`,
           [
             persistedSnapshot.id,
             input.providerId,
@@ -524,9 +710,26 @@ export async function persistProviderSnapshot(
             record.recordKey,
             json(record.normalized as JsonValue),
             json(record.raw),
+            identityIsQuarantined,
           ],
         );
         recordsImported += result.rowCount ?? 0;
+        if (result.rows[0]?.player_id === null) {
+          unresolvedRecordExternalIds.add(record.externalPlayerId);
+          if (!identityIsQuarantined) {
+            await queuePlayerMatchReview(client, {
+              providerId: input.providerId,
+              externalPlayerId: record.externalPlayerId,
+              runId: input.runId,
+              reason: "unmatched",
+              evidence: {
+                recordKey: record.recordKey,
+                dataType: record.normalized.type,
+                normalized: record.normalized as JsonValue,
+              },
+            });
+          }
+        }
       }
 
       for (const game of games) {
@@ -561,11 +764,44 @@ export async function persistProviderSnapshot(
 
     const unmatchedResult = await client.query<{ count: number }>(
       `select count(*)::int as count
-         from provider_data_records
-        where snapshot_id = $1 and player_id is null`,
-      [persistedSnapshot.id],
+         from provider_data_records record
+        where record.snapshot_id = $1
+          and record.player_id is null
+          and (
+            record.external_player_id is null
+            or not exists (
+              select 1
+                from player_external_ids identity
+               where identity.provider_id = $2
+                 and identity.external_id = record.external_player_id
+            )
+          )`,
+      [persistedSnapshot.id, input.providerId],
     );
-    const unmatchedPlayerCount = unmatchedResult.rows[0]?.count ?? 0;
+    let unresolvedDuplicateIdentityCount = 0;
+    if (duplicate) {
+      const unresolvedResult = await client.query<{ count: number }>(
+        `select count(*)::int as count
+           from player_match_reviews review
+           join provider_ingestion_runs source_run
+             on source_run.id = review.latest_ingestion_run_id
+          where source_run.provider_id = $1
+            and source_run.season = $2
+            and source_run.week is not distinct from $3
+            and review.status = 'open'`,
+        [input.providerId, request.season, request.week],
+      );
+      unresolvedDuplicateIdentityCount = unresolvedResult.rows[0]?.count ?? 0;
+    }
+    const overlappingUnresolvedIds = [...unresolvedIdentityExternalIds].filter(
+      (externalId) => unresolvedRecordExternalIds.has(externalId),
+    ).length;
+    const unmatchedPlayerCount = Math.max(
+      (unmatchedResult.rows[0]?.count ?? 0) +
+        unresolvedIdentityCount -
+        overlappingUnresolvedIds,
+      unresolvedDuplicateIdentityCount,
+    );
     const status: "succeeded" | "partial" =
       input.rejections.length > 0 ||
       unmatchedPlayerCount > 0 ||
@@ -773,7 +1009,10 @@ export const LATEST_PLAYER_DATA_SQL = `with latest_snapshots as (
          s.provider_id, s.id as snapshot_id
     from provider_data_snapshots s
     join provider_data_records r on r.snapshot_id = s.id
-   where r.player_id = $1
+    left join player_external_ids resolved_identity
+      on resolved_identity.provider_id = s.provider_id
+     and resolved_identity.external_id = r.external_player_id
+   where coalesce(resolved_identity.player_id, r.player_id) = $1
      and r.data_type = $2
      and s.season = $3
      and (($4::smallint is null and s.week is null) or s.week = $4)
@@ -782,13 +1021,17 @@ export const LATEST_PLAYER_DATA_SQL = `with latest_snapshots as (
 select
        s.provider_id, p.slug as provider_slug, s.id as snapshot_id,
        s.adapter_version, s.season, s.week, s.observed_at, s.imported_at,
-       s.provenance, r.player_id, r.external_player_id, r.data_type,
+       s.provenance, coalesce(resolved_identity.player_id, r.player_id) as player_id,
+       r.external_player_id, r.data_type,
        r.record_key, r.normalized_payload, r.raw_payload
   from latest_snapshots latest
   join provider_data_snapshots s on s.id = latest.snapshot_id
   join provider_data_records r on r.snapshot_id = latest.snapshot_id
   join providers p on p.id = s.provider_id
- where r.player_id = $1
+  left join player_external_ids resolved_identity
+    on resolved_identity.provider_id = s.provider_id
+   and resolved_identity.external_id = r.external_player_id
+ where coalesce(resolved_identity.player_id, r.player_id) = $1
    and r.data_type = $2
  order by p.slug, r.record_key`;
 
@@ -830,8 +1073,11 @@ export const LATEST_MARKET_TRENDS_SQL = `with latest_snapshots as (
          s.provider_id, s.id as snapshot_id
     from provider_data_snapshots s
     join provider_data_records r on r.snapshot_id = s.id
+    left join player_external_ids resolved_identity
+      on resolved_identity.provider_id = s.provider_id
+     and resolved_identity.external_id = r.external_player_id
    where r.data_type = 'market_trend'
-     and r.player_id is not null
+     and coalesce(resolved_identity.player_id, r.player_id) is not null
      and s.season = $1
      and (($2::smallint is null and s.week is null) or s.week = $2)
    order by s.provider_id, s.observed_at desc, s.imported_at desc, s.id desc
@@ -839,14 +1085,18 @@ export const LATEST_MARKET_TRENDS_SQL = `with latest_snapshots as (
 select
        s.provider_id, p.slug as provider_slug, s.id as snapshot_id,
        s.adapter_version, s.season, s.week, s.observed_at, s.imported_at,
-       s.provenance, r.player_id, r.external_player_id, r.data_type,
+       s.provenance, coalesce(resolved_identity.player_id, r.player_id) as player_id,
+       r.external_player_id, r.data_type,
        r.record_key, r.normalized_payload, r.raw_payload
   from latest_snapshots latest
   join provider_data_snapshots s on s.id = latest.snapshot_id
   join provider_data_records r on r.snapshot_id = latest.snapshot_id
   join providers p on p.id = s.provider_id
+  left join player_external_ids resolved_identity
+    on resolved_identity.provider_id = s.provider_id
+   and resolved_identity.external_id = r.external_player_id
  where r.data_type = 'market_trend'
-   and r.player_id is not null
+   and coalesce(resolved_identity.player_id, r.player_id) is not null
  order by p.slug, r.external_player_id, r.record_key`;
 
 /** Market popularity stays separately queryable from projections/rankings. */
