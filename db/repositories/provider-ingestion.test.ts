@@ -383,6 +383,76 @@ describe("provider ingestion repository", () => {
     ).toHaveLength(1);
   });
 
+  it("queues the conflicting alias so a manual correction survives later imports", async () => {
+    const sleeperProviderId = "44444444-4444-4444-8444-444444444444";
+    const primaryPlayerId = "aaaaaaaa-0000-4000-8000-000000000001";
+    const conflictingPlayerId = "aaaaaaaa-0000-4000-8000-000000000002";
+    client.query
+      .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: sleeperProviderId,
+            slug: "sleeper",
+            name: "Sleeper",
+            created_at: importedAt,
+          },
+        ],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [{ player_id: primaryPlayerId }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [{ player_id: conflictingPlayerId }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const result = await persistProviderSnapshot({
+      ...persistInput,
+      records: [],
+      playerIdentities: [
+        {
+          externalPlayerId: "00-0033280",
+          fullName: "Christian McCaffrey",
+          position: "RB",
+          nflTeam: "SF",
+          byeWeek: null,
+          status: "active",
+          aliases: [
+            {
+              providerSlug: "sleeper",
+              providerName: "Sleeper",
+              externalId: "4034",
+            },
+          ],
+          raw: { gsis_id: "00-0033280", sleeper_id: "4034" },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "partial",
+      playerIdentitiesImported: 0,
+      unmatchedPlayerCount: 1,
+    });
+    const reviewInsert = client.query.mock.calls.find((call) =>
+      String(call[0]).includes("insert into player_match_reviews"),
+    );
+    expect(reviewInsert?.[1]?.[0]).toBe(sleeperProviderId);
+    expect(reviewInsert?.[1]?.[1]).toBe("4034");
+    expect(reviewInsert?.[1]?.[4]).toEqual([
+      primaryPlayerId,
+      conflictingPlayerId,
+    ]);
+  });
+
   it("queues data records whose provider player ID has no canonical match", async () => {
     client.query
       .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
@@ -527,6 +597,7 @@ describe("provider ingestion repository", () => {
     expect(sql).toContain("with latest_snapshots as");
     expect(sql).toContain("distinct on (s.provider_id)");
     expect(sql).toContain("r.snapshot_id = latest.snapshot_id");
+    expect(sql).toContain("coalesce(resolved_identity.player_id, r.player_id)");
   });
 
   it("queries market trends independently from projection records", async () => {
@@ -565,6 +636,9 @@ describe("provider ingestion repository", () => {
     });
     expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
       "r.data_type = 'market_trend'",
+    );
+    expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
+      "coalesce(resolved_identity.player_id, r.player_id)",
     );
   });
 

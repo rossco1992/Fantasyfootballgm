@@ -58,6 +58,58 @@ create table if not exists player_match_audit_events (
 create index if not exists player_match_audit_provider_external_idx
     on player_match_audit_events (provider_id, external_player_id, created_at desc);
 
+-- Upgrades can already contain quarantined provider rows from migrations
+-- 0004/0005. Seed a durable review for their latest evidence so replaying an
+-- identical (and therefore duplicate) snapshot is not required to make those
+-- records resolvable.
+with unmatched as (
+    select snapshot.provider_id,
+           record.external_player_id,
+           snapshot.ingestion_run_id,
+           record.record_key,
+           record.data_type,
+           snapshot.imported_at,
+           count(*) over (
+             partition by snapshot.provider_id, record.external_player_id
+           )::integer as occurrences,
+           row_number() over (
+             partition by snapshot.provider_id, record.external_player_id
+             order by snapshot.imported_at desc, record.id desc
+           ) as recency
+      from provider_data_records record
+      join provider_data_snapshots snapshot on snapshot.id = record.snapshot_id
+     where record.player_id is null
+       and not exists (
+         select 1 from player_external_ids external_id
+          where external_id.provider_id = snapshot.provider_id
+            and external_id.external_id = record.external_player_id
+       )
+), inserted as (
+    insert into player_match_reviews (
+      provider_id, external_player_id, latest_ingestion_run_id, reason,
+      evidence, occurrences, first_seen_at, last_seen_at
+    )
+    select provider_id, external_player_id, ingestion_run_id, 'unmatched',
+           jsonb_build_object(
+             'migrationBackfill', true,
+             'recordKey', record_key,
+             'dataType', data_type
+           ),
+           occurrences, imported_at, imported_at
+      from unmatched
+     where recency = 1
+    on conflict (provider_id, external_player_id) do nothing
+    returning provider_id, external_player_id, latest_ingestion_run_id,
+              evidence, first_seen_at
+)
+insert into player_match_audit_events (
+  provider_id, external_player_id, ingestion_run_id, event_type, strategy,
+  evidence, created_at
+)
+select provider_id, external_player_id, latest_ingestion_run_id, 'queued',
+       'none', evidence, first_seen_at
+  from inserted;
+
 comment on table player_match_reviews is 'Durable queue for ambiguous or unmatched provider player IDs. Resolutions survive future imports through player_external_ids.';
 comment on table player_match_audit_events is 'Append-only evidence for automated and manual canonical player matching decisions.';
 

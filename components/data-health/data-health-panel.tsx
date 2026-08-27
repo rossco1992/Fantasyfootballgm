@@ -122,9 +122,37 @@ export function DataHealthPanel({ summary }: { summary: DataHealthSummary }) {
                       ))}
                     </div>
                   ) : (
-                    <span className="text-xs text-neutral-500">
-                      No safe automatic candidate
-                    </span>
+                    <form
+                      action={resolvePlayerMatchAction}
+                      className="flex flex-wrap items-end gap-2"
+                    >
+                      <input name="reviewId" type="hidden" value={review.id} />
+                      <label className="grid gap-1 text-xs font-medium text-neutral-600 dark:text-neutral-300">
+                        Select the canonical player
+                        <select
+                          className="max-w-xs rounded-lg border border-neutral-300 bg-white px-3 py-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                          defaultValue=""
+                          name="playerId"
+                          required
+                        >
+                          <option disabled value="">
+                            Search by typing a player name…
+                          </option>
+                          {summary.playerOptions.map((player) => (
+                            <option key={player.id} value={player.id}>
+                              {player.fullName} ({player.position}
+                              {player.nflTeam ? ` · ${player.nflTeam}` : ""})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-950 dark:hover:bg-neutral-800"
+                        type="submit"
+                      >
+                        Save match
+                      </button>
+                    </form>
                   )}
                 </div>
               </article>

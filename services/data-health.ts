@@ -3,6 +3,7 @@ import {
   listProviderDataHealth,
   resolvePlayerMatchReview,
 } from "@/db/repositories/data-health";
+import { listPlayers } from "@/db/repositories/players";
 
 export type DataSourceHealthStatus =
   "not_loaded" | "current" | "stale" | "running" | "partial" | "failed";
@@ -10,9 +11,10 @@ export type DataSourceHealthStatus =
 export async function retrieveDataHealthSummary(
   clock: () => Date = () => new Date(),
 ) {
-  const [providers, unresolvedMatches] = await Promise.all([
+  const [providers, unresolvedMatches, playerOptions] = await Promise.all([
     listProviderDataHealth(),
     listOpenPlayerMatchReviews(),
+    listPlayers(),
   ]);
   const now = clock();
 
@@ -40,6 +42,7 @@ export async function retrieveDataHealthSummary(
       return { ...provider, status };
     }),
     unresolvedMatches,
+    playerOptions,
     unresolvedPlayerCount: providers.reduce(
       (total, provider) => total + provider.unresolvedPlayerCount,
       0,

@@ -5,6 +5,7 @@ import {
   listProviderDataHealth,
   resolvePlayerMatchReview,
 } from "@/db/repositories/data-health";
+import { listPlayers } from "@/db/repositories/players";
 import {
   applyManualPlayerMatch,
   retrieveDataHealthSummary,
@@ -15,11 +16,15 @@ vi.mock("@/db/repositories/data-health", () => ({
   listProviderDataHealth: vi.fn(),
   resolvePlayerMatchReview: vi.fn(),
 }));
+vi.mock("@/db/repositories/players", () => ({ listPlayers: vi.fn() }));
 
 const now = new Date("2026-08-26T12:00:00Z");
 
 describe("data health service", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listPlayers).mockResolvedValue([]);
+  });
 
   it("classifies current, stale, failed, and unloaded providers", async () => {
     vi.mocked(listProviderDataHealth).mockResolvedValue([
@@ -79,6 +84,7 @@ describe("data health service", () => {
       "not_loaded",
     ]);
     expect(result.unresolvedPlayerCount).toBe(3);
+    expect(result.playerOptions).toEqual([]);
   });
 
   it("records the authenticated user when applying a manual match", async () => {

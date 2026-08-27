@@ -357,6 +357,11 @@ async function persistPlayerIdentity(
   }
 
   const mappedPlayerIds = new Set<string>();
+  const mappedAliases: {
+    alias: { providerSlug: string; providerName: string; externalId: string };
+    providerId: string;
+    playerId: string;
+  }[] = [];
   let mappedByPrimaryProvider = false;
   for (const alias of aliases.values()) {
     const providerId = aliasProviders.get(alias.providerSlug);
@@ -368,7 +373,9 @@ async function persistPlayerIdentity(
       [providerId, alias.externalId],
     );
     if (mappingResult.rows[0]) {
-      mappedPlayerIds.add(mappingResult.rows[0].player_id);
+      const playerId = mappingResult.rows[0].player_id;
+      mappedPlayerIds.add(playerId);
+      mappedAliases.push({ alias, providerId, playerId });
       if (alias.providerSlug === input.descriptor.slug) {
         mappedByPrimaryProvider = true;
       }
@@ -377,14 +384,30 @@ async function persistPlayerIdentity(
 
   if (mappedPlayerIds.size > 1) {
     const candidatePlayerIds = [...mappedPlayerIds];
-    await queuePlayerMatchReview(client, {
-      providerId: input.providerId,
-      externalPlayerId: input.identity.externalPlayerId,
-      runId: input.runId,
-      reason: "conflicting_external_ids",
-      candidatePlayerIds,
-      evidence: input.identity.raw,
-    });
+    const primaryMapping = mappedAliases.find(
+      (mapping) => mapping.alias.providerSlug === input.descriptor.slug,
+    );
+    const conflictingAliases = primaryMapping
+      ? mappedAliases.filter(
+          (mapping) => mapping.playerId !== primaryMapping.playerId,
+        )
+      : mappedAliases;
+    for (const conflict of conflictingAliases) {
+      await queuePlayerMatchReview(client, {
+        providerId: conflict.providerId,
+        externalPlayerId: conflict.alias.externalId,
+        runId: input.runId,
+        reason: "conflicting_external_ids",
+        candidatePlayerIds,
+        evidence: {
+          sourceProvider: input.descriptor.slug,
+          sourceExternalPlayerId: input.identity.externalPlayerId,
+          conflictingProvider: conflict.alias.providerSlug,
+          conflictingExternalPlayerId: conflict.alias.externalId,
+          raw: input.identity.raw,
+        },
+      });
+    }
     return { imported: 0, unresolved: 1 };
   }
 
@@ -942,7 +965,7 @@ export const LATEST_PLAYER_DATA_SQL = `with latest_snapshots as (
     left join player_external_ids resolved_identity
       on resolved_identity.provider_id = s.provider_id
      and resolved_identity.external_id = r.external_player_id
-   where coalesce(r.player_id, resolved_identity.player_id) = $1
+   where coalesce(resolved_identity.player_id, r.player_id) = $1
      and r.data_type = $2
      and s.season = $3
      and (($4::smallint is null and s.week is null) or s.week = $4)
@@ -951,7 +974,7 @@ export const LATEST_PLAYER_DATA_SQL = `with latest_snapshots as (
 select
        s.provider_id, p.slug as provider_slug, s.id as snapshot_id,
        s.adapter_version, s.season, s.week, s.observed_at, s.imported_at,
-       s.provenance, coalesce(r.player_id, resolved_identity.player_id) as player_id,
+       s.provenance, coalesce(resolved_identity.player_id, r.player_id) as player_id,
        r.external_player_id, r.data_type,
        r.record_key, r.normalized_payload, r.raw_payload
   from latest_snapshots latest
@@ -961,7 +984,7 @@ select
   left join player_external_ids resolved_identity
     on resolved_identity.provider_id = s.provider_id
    and resolved_identity.external_id = r.external_player_id
- where coalesce(r.player_id, resolved_identity.player_id) = $1
+ where coalesce(resolved_identity.player_id, r.player_id) = $1
    and r.data_type = $2
  order by p.slug, r.record_key`;
 
@@ -1007,7 +1030,7 @@ export const LATEST_MARKET_TRENDS_SQL = `with latest_snapshots as (
       on resolved_identity.provider_id = s.provider_id
      and resolved_identity.external_id = r.external_player_id
    where r.data_type = 'market_trend'
-     and coalesce(r.player_id, resolved_identity.player_id) is not null
+     and coalesce(resolved_identity.player_id, r.player_id) is not null
      and s.season = $1
      and (($2::smallint is null and s.week is null) or s.week = $2)
    order by s.provider_id, s.observed_at desc, s.imported_at desc, s.id desc
@@ -1015,7 +1038,7 @@ export const LATEST_MARKET_TRENDS_SQL = `with latest_snapshots as (
 select
        s.provider_id, p.slug as provider_slug, s.id as snapshot_id,
        s.adapter_version, s.season, s.week, s.observed_at, s.imported_at,
-       s.provenance, coalesce(r.player_id, resolved_identity.player_id) as player_id,
+       s.provenance, coalesce(resolved_identity.player_id, r.player_id) as player_id,
        r.external_player_id, r.data_type,
        r.record_key, r.normalized_payload, r.raw_payload
   from latest_snapshots latest
@@ -1026,7 +1049,7 @@ select
     on resolved_identity.provider_id = s.provider_id
    and resolved_identity.external_id = r.external_player_id
  where r.data_type = 'market_trend'
-   and coalesce(r.player_id, resolved_identity.player_id) is not null
+   and coalesce(resolved_identity.player_id, r.player_id) is not null
  order by p.slug, r.external_player_id, r.record_key`;
 
 /** Market popularity stays separately queryable from projections/rankings. */
