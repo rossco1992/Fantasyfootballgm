@@ -387,6 +387,23 @@ async function persistPlayerIdentity(
     const primaryMapping = mappedAliases.find(
       (mapping) => mapping.alias.providerSlug === input.descriptor.slug,
     );
+    if (!primaryMapping) {
+      await queuePlayerMatchReview(client, {
+        providerId: input.providerId,
+        externalPlayerId: input.identity.externalPlayerId,
+        runId: input.runId,
+        reason: "conflicting_external_ids",
+        candidatePlayerIds,
+        evidence: {
+          sourceProvider: input.descriptor.slug,
+          sourceExternalPlayerId: input.identity.externalPlayerId,
+          conflictingProviders: mappedAliases.map(
+            (mapping) => mapping.alias.providerSlug,
+          ),
+          raw: input.identity.raw,
+        },
+      });
+    }
     const conflictingAliases = primaryMapping
       ? mappedAliases.filter(
           (mapping) => mapping.playerId !== primaryMapping.playerId,
@@ -748,13 +765,30 @@ export async function persistProviderSnapshot(
         where snapshot_id = $1 and player_id is null`,
       [persistedSnapshot.id],
     );
+    let unresolvedDuplicateIdentityCount = 0;
+    if (duplicate) {
+      const unresolvedResult = await client.query<{ count: number }>(
+        `select count(*)::int as count
+           from player_match_reviews review
+           join provider_ingestion_runs source_run
+             on source_run.id = review.latest_ingestion_run_id
+          where source_run.provider_id = $1
+            and source_run.season = $2
+            and source_run.week is not distinct from $3
+            and review.status = 'open'`,
+        [input.providerId, request.season, request.week],
+      );
+      unresolvedDuplicateIdentityCount = unresolvedResult.rows[0]?.count ?? 0;
+    }
     const overlappingUnresolvedIds = [...unresolvedIdentityExternalIds].filter(
       (externalId) => unresolvedRecordExternalIds.has(externalId),
     ).length;
-    const unmatchedPlayerCount =
+    const unmatchedPlayerCount = Math.max(
       (unmatchedResult.rows[0]?.count ?? 0) +
-      unresolvedIdentityCount -
-      overlappingUnresolvedIds;
+        unresolvedIdentityCount -
+        overlappingUnresolvedIds,
+      unresolvedDuplicateIdentityCount,
+    );
     const status: "succeeded" | "partial" =
       input.rejections.length > 0 ||
       unmatchedPlayerCount > 0 ||
