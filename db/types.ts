@@ -10,6 +10,7 @@ import {
   sourceProvenanceSchema,
 } from "@/domain/fantasy-data";
 import { PLAYER_POSITIONS, PLAYER_STATUSES } from "@/domain/player";
+import { PLAYER_MATCH_REASONS } from "@/domain/data-health";
 
 /**
  * Row types and validation schemas for the canonical persistence model.
@@ -161,3 +162,21 @@ export const providerIngestionStateSchema = z.object({
 export type ProviderIngestionState = z.infer<
   typeof providerIngestionStateSchema
 >;
+
+export const playerMatchReviewRowSchema = z.object({
+  id: z.string().uuid(),
+  provider_id: z.string().uuid(),
+  external_player_id: z.string(),
+  latest_ingestion_run_id: z.string().uuid().nullable(),
+  reason: z.enum(PLAYER_MATCH_REASONS),
+  status: z.enum(["open", "resolved"]),
+  candidate_player_ids: z.array(z.string().uuid()),
+  evidence: jsonValueSchema,
+  occurrences: z.number().int().positive(),
+  resolved_player_id: z.string().uuid().nullable(),
+  resolved_by_user_id: z.string().uuid().nullable(),
+  first_seen_at: z.date(),
+  last_seen_at: z.date(),
+  resolved_at: z.date().nullable(),
+});
+export type PlayerMatchReviewRow = z.infer<typeof playerMatchReviewRowSchema>;

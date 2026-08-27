@@ -20,3 +20,8 @@ replaces the last valid snapshot.
 aliases resolve market activity through the canonical player map. It also
 assembles player history, usage, matchup games, and separately attributed market
 trends for one season/week.
+
+`data-health.ts` assembles provider freshness, failures, and unresolved player
+counts for the dashboard. It also applies authenticated manual match decisions
+through the persistence layer; provider-specific IDs never leak into ranking or
+UI logic as canonical identities.

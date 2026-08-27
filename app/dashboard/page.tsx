@@ -1,10 +1,12 @@
 import { logoutAction } from "@/app/auth/actions";
+import { DataHealthPanel } from "@/components/data-health/data-health-panel";
 import { LeagueConfigurationForm } from "@/components/league/league-configuration-form";
 import { PlayerCatalogPanel } from "@/components/player-catalog/player-catalog-panel";
 import { RosterSetupPanel } from "@/components/roster/roster-setup-panel";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { retrieveLeagueConfiguration } from "@/services/league-configurations";
+import { retrieveDataHealthSummary } from "@/services/data-health";
 import { retrievePlayerCatalogSummary } from "@/services/player-catalog";
 import { retrieveManualRoster } from "@/services/roster-setup";
 
@@ -14,15 +16,16 @@ export const maxDuration = 300;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ message?: string }>;
+  searchParams: Promise<{ error?: string; message?: string }>;
 }) {
   const [user, params] = await Promise.all([
     requireAuthenticatedUser(),
     searchParams,
   ]);
-  const [configuration, catalog] = await Promise.all([
+  const [configuration, catalog, dataHealth] = await Promise.all([
     retrieveLeagueConfiguration(user.id),
     retrievePlayerCatalogSummary(),
+    retrieveDataHealthSummary(),
   ]);
   const assignments = configuration
     ? await retrieveManualRoster(user.id, configuration.id)
@@ -68,6 +71,15 @@ export default async function DashboardPage({
         </p>
       ) : null}
 
+      {params.error ? (
+        <p
+          role="alert"
+          className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
+        >
+          {params.error}
+        </p>
+      ) : null}
+
       <PlayerCatalogPanel
         lastSuccessAt={catalog.freshness?.lastSuccessAt?.toISOString() ?? null}
         playerCount={catalog.playerCount}
@@ -81,6 +93,8 @@ export default async function DashboardPage({
                 : "current"
         }
       />
+
+      <DataHealthPanel summary={dataHealth} />
 
       {configuration ? (
         <>

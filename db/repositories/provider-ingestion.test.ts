@@ -301,6 +301,111 @@ describe("provider ingestion repository", () => {
     ).toBe(false);
   });
 
+  it("queues ambiguous identities instead of merging or failing the snapshot", async () => {
+    const firstCandidate = {
+      id: "aaaaaaaa-0000-4000-8000-000000000001",
+      full_name: "Shared Name",
+      position: "WR",
+      nfl_team: "NYJ",
+      bye_week: 12,
+      status: "active",
+      created_at: importedAt,
+      updated_at: importedAt,
+    };
+    const secondCandidate = {
+      ...firstCandidate,
+      id: "aaaaaaaa-0000-4000-8000-000000000002",
+      nfl_team: "NYG",
+    };
+    client.query
+      .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({
+        rows: [firstCandidate, secondCandidate],
+        rowCount: 2,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ player_id: null }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 1 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const result = await persistProviderSnapshot({
+      ...persistInput,
+      records: [
+        {
+          ...persistInput.records[0]!,
+          externalPlayerId: "shared-name",
+          recordKey: "shared-name:projection",
+        },
+      ],
+      playerIdentities: [
+        {
+          externalPlayerId: "shared-name",
+          fullName: "Shared Name",
+          position: "WR",
+          nflTeam: null,
+          byeWeek: null,
+          status: "active",
+          aliases: [],
+          raw: { full_name: "Shared Name" },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "partial",
+      playerIdentitiesImported: 0,
+      unmatchedPlayerCount: 1,
+    });
+    expect(
+      client.query.mock.calls.some((call) =>
+        String(call[0]).includes("insert into player_match_reviews"),
+      ),
+    ).toBe(true);
+    expect(
+      client.query.mock.calls.some((call) =>
+        String(call[0]).includes("insert into players"),
+      ),
+    ).toBe(false);
+    const recordInsert = client.query.mock.calls.find((call) =>
+      String(call[0]).includes("insert into provider_data_records"),
+    );
+    expect(String(recordInsert?.[0])).toContain(
+      "case when $8::boolean then null",
+    );
+    expect(recordInsert?.[1]?.[7]).toBe(true);
+    expect(
+      client.query.mock.calls.filter((call) =>
+        String(call[0]).includes("insert into player_match_reviews"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("queues data records whose provider player ID has no canonical match", async () => {
+    client.query
+      .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ player_id: null }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 1 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const result = await persistProviderSnapshot(persistInput);
+
+    expect(result).toMatchObject({
+      status: "partial",
+      unmatchedPlayerCount: 1,
+    });
+    const reviewInsert = client.query.mock.calls.find((call) =>
+      String(call[0]).includes("insert into player_match_reviews"),
+    );
+    expect(reviewInsert?.[1]?.[1]).toBe("fixture-cmc");
+    expect(reviewInsert?.[1]?.[3]).toBe("unmatched");
+  });
+
   it("preserves a known bye week when an identity catalog supplies null", async () => {
     const playerId = "aaaaaaaa-0000-4000-8000-000000000002";
     client.query
