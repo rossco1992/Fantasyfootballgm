@@ -3,6 +3,7 @@ import { DataHealthPanel } from "@/components/data-health/data-health-panel";
 import { HistoricalBackfillPanel } from "@/components/data-health/historical-backfill-panel";
 import { LeagueConfigurationForm } from "@/components/league/league-configuration-form";
 import { PlayerCatalogPanel } from "@/components/player-catalog/player-catalog-panel";
+import { ProjectionSourcesPanel } from "@/components/data-health/projection-sources-panel";
 import { RosterSetupPanel } from "@/components/roster/roster-setup-panel";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
@@ -10,6 +11,7 @@ import { retrieveLeagueConfiguration } from "@/services/league-configurations";
 import { retrieveDataHealthSummary } from "@/services/data-health";
 import { retrieveHistoricalBackfillSummary } from "@/services/historical-backfill";
 import { retrievePlayerCatalogSummary } from "@/services/player-catalog";
+import { configuredProjectionSources } from "@/services/projection-sources";
 import { retrieveManualRoster } from "@/services/roster-setup";
 
 export const dynamic = "force-dynamic";
@@ -101,6 +103,11 @@ export default async function DashboardPage({
       <DataHealthPanel summary={dataHealth} />
 
       <HistoricalBackfillPanel summary={historicalBackfill} />
+
+      <ProjectionSourcesPanel
+        configuredSources={configuredProjectionSources()}
+        season={new Date().getUTCFullYear()}
+      />
 
       {configuration ? (
         <>

@@ -12,9 +12,10 @@ follow when implementing them.
 
 ## Product and Integration Boundaries
 
-- Design for one person and one Yahoo fantasy-football league first.
-- Yahoo is the system of record. The app reads league state and recommends
-  actions; the user executes changes in Yahoo.
+- Design for one person and one manually configured fantasy-football league
+  first.
+- The app owns its league, roster, keeper, and draft state. It recommends
+  actions; the user executes changes on their fantasy platform.
 - Support snake drafts only in the first release.
 - Support one keeper per team for one additional season. A drafted keeper costs
   the same round as the prior year's draft round. Waiver/free-agent cost stays
@@ -42,8 +43,8 @@ follow when implementing them.
    statistics or rankings.
 3. Normalize external fantasy data into an internal canonical data model before
    downstream use.
-4. Keep Yahoo and fantasy-data integrations behind provider adapters so sources
-   can be added or replaced without rewriting the product.
+4. Keep fantasy-data integrations behind provider adapters so sources can be
+   added or replaced without rewriting the product.
 5. Preserve raw provider values and immutable snapshots; compute consensus and
    personalized outputs separately.
 6. Prefer server-side access for secrets, provider credentials, ranking
@@ -57,7 +58,7 @@ follow when implementing them.
 ## Data Flow
 
 ```
-Yahoo league state + projection, market, and historical sources + CSV fallback
+Manual league state + projection, market, and historical sources + CSV fallback
   → Provider Adapters
   → Validation + Player Identity Matching
   → Raw Immutable Source Snapshots
@@ -70,13 +71,12 @@ Yahoo league state + projection, market, and historical sources + CSV fallback
 
 ## Initial Data Strategy
 
-- Validate Yahoo developer access and read-only capabilities before connecting
-  one league through OAuth.
 - Use FantasyPros and FantasyNerds when the user's developer/API entitlements
   are confirmed.
 - Use nflverse for reproducible history and supported market-trend sources as
   supplemental context.
-- Keep CSV as a fixture, development, and manual fallback—not the primary path.
+- Keep CSV as a supported manual fallback when a paid provider API is not
+  configured.
 - Maintain a canonical internal player ID.
 - Store external provider IDs separately.
 - Store raw value, normalized value, provider, season/week, observed-at,
@@ -89,7 +89,7 @@ Yahoo league state + projection, market, and historical sources + CSV fallback
 
 ## Decision-Engine Boundaries
 
-- Recalculate projected stat lines under the Yahoo league's scoring.
+- Recalculate projected stat lines under the configured league scoring.
 - Keep a stable base market grade separate from personalized tiers.
 - Dynamic tiers may react to roster construction, scarcity, availability,
   keeper context, ADP, and league/manager history.

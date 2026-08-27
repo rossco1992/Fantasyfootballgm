@@ -49,7 +49,11 @@ participation, and schedules. `sleeper/` supplies attributed add/drop market
 activity. Their source behavior and coverage rules are documented in
 [`docs/historical-context.md`](../docs/historical-context.md).
 
-`yahoo/` currently contains the NOC-52 OAuth and read-only capability validation
-harness. It deliberately does not normalize or persist Yahoo league state; the
-production adapter/connection remains NOC-53. See
-[`docs/yahoo-api-validation.md`](../docs/yahoo-api-validation.md).
+`fantasypros/` and `fantasynerds/` normalize paid API responses. `manual/`
+normalizes user-supplied exports from either provider when an API key is not
+available. Setup, supported fields, and entitlement limits are documented in
+[`docs/projection-sources.md`](../docs/projection-sources.md).
+
+`yahoo/` contains the historical NOC-52 validation harness only. It is not part
+of the active product path, does not normalize or persist league state, and no
+production Yahoo integration is planned.

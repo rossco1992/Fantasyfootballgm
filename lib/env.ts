@@ -36,6 +36,11 @@ const optionalTrimmedString = z.preprocess(
   z.string().trim().min(1).optional(),
 );
 
+const projectionProviderSchema = z.object({
+  FANTASYPROS_API_KEY: optionalTrimmedString,
+  FANTASYNERDS_API_KEY: optionalTrimmedString,
+});
+
 const yahooOAuthSchema = z.object({
   YAHOO_CLIENT_ID: z.string().trim().min(1, "YAHOO_CLIENT_ID is required"),
   YAHOO_CLIENT_SECRET: z
@@ -63,6 +68,7 @@ export type PublicEnv = z.infer<typeof publicSchema>;
 export type ServerEnv = z.infer<typeof serverSchema>;
 export type YahooOAuthEnv = z.infer<typeof yahooOAuthSchema>;
 export type YahooValidationEnv = z.infer<typeof yahooValidationSchema>;
+export type ProjectionProviderEnv = z.infer<typeof projectionProviderSchema>;
 
 function formatIssues(error: z.ZodError): string {
   return error.issues
@@ -111,6 +117,14 @@ export function getServerEnv(): ServerEnv {
   }
 
   return parsed.data;
+}
+
+/** Optional server-only credentials for paid projection sources. */
+export function getProjectionProviderEnv(): ProjectionProviderEnv {
+  return projectionProviderSchema.parse({
+    FANTASYPROS_API_KEY: process.env.FANTASYPROS_API_KEY,
+    FANTASYNERDS_API_KEY: process.env.FANTASYNERDS_API_KEY,
+  });
 }
 
 /**

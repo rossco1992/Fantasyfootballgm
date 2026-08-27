@@ -24,6 +24,17 @@ describe("env", () => {
     delete process.env.YAHOO_LEAGUE_KEY;
     delete process.env.YAHOO_TEAM_KEY;
     delete process.env.YAHOO_WEEK;
+    delete process.env.FANTASYPROS_API_KEY;
+    delete process.env.FANTASYNERDS_API_KEY;
+  });
+
+  it("parses optional projection-provider credentials", async () => {
+    process.env.FANTASYPROS_API_KEY = "fantasypros-key";
+    const { getProjectionProviderEnv } = await import("@/lib/env");
+    expect(getProjectionProviderEnv()).toEqual({
+      FANTASYPROS_API_KEY: "fantasypros-key",
+      FANTASYNERDS_API_KEY: undefined,
+    });
   });
 
   afterEach(() => {

@@ -75,6 +75,8 @@ runtime by [`lib/env.ts`](./lib/env.ts) using Zod.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public      | Supabase publishable anon key             |
 | `SUPABASE_SERVICE_ROLE_KEY`     | Server-only | Privileged Supabase key (server use only) |
 | `DATABASE_URL`                  | Server-only | Postgres migrations and persistence       |
+| `FANTASYPROS_API_KEY`           | Server-only | Optional FantasyPros personal API access  |
+| `FANTASYNERDS_API_KEY`          | Server-only | Optional Fantasy Nerds developer API key  |
 
 ## Authentication
 
@@ -165,17 +167,14 @@ requires separate permission. Run the on-demand import after migrations:
 npm run players:import -- 2026
 ```
 
-Yahoo access is being de-risked separately before the one-league connector is
-built. The NOC-52 harness validates an approved development application's OAuth
-and documented read-only resources without persisting raw private responses or
-attempting write-back. See
-[`docs/yahoo-api-validation.md`](./docs/yahoo-api-validation.md).
+Projection sources are optional and independent. Configure any entitled paid
+API server-side, or upload a FantasyPros/Fantasy Nerds CSV from the dashboard.
+Missing one provider never blocks the other sources or the CSV path. See
+[`docs/projection-sources.md`](./docs/projection-sources.md).
 
-```bash
-# after copying .env.example to .env.local and configuring approved Yahoo creds
-npm run yahoo:auth-url
-npm run yahoo:validate
-```
+The repository retains the NOC-52 Yahoo capability probe as historical tooling,
+but Yahoo is not part of the active product path and no production integration
+is planned.
 
 ### Local/development setup
 
