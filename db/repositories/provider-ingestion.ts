@@ -49,6 +49,7 @@ export type PersistProviderSnapshotInput = {
   games: ProviderGame[];
   rejections: RejectedProviderRecord[];
   importedAt: Date;
+  updateCanonicalPlayerMetadata?: boolean;
 };
 
 export type ProviderIngestionResult = {
@@ -322,6 +323,7 @@ async function persistPlayerIdentity(
     providerId: string;
     descriptor: ProviderDescriptor;
     identity: ProviderPlayerIdentity;
+    updateCanonicalPlayerMetadata: boolean;
   },
 ): Promise<PersistedPlayerIdentity> {
   const aliases = new Map<
@@ -501,7 +503,7 @@ async function persistPlayerIdentity(
     strategy = "created_canonical";
   }
 
-  if (!createdPlayer) {
+  if (!createdPlayer && input.updateCanonicalPlayerMetadata) {
     await client.query(
       `update players
           set full_name = $2,
@@ -675,6 +677,8 @@ export async function persistProviderSnapshot(
           providerId: input.providerId,
           descriptor,
           identity,
+          updateCanonicalPlayerMetadata:
+            input.updateCanonicalPlayerMetadata !== false,
         });
         playerIdentitiesImported += persistedIdentity.imported;
         unresolvedIdentityCount += persistedIdentity.unresolved;

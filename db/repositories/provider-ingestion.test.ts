@@ -544,6 +544,92 @@ describe("provider ingestion repository", () => {
     ]);
   });
 
+  it("queues the unmapped primary ID when secondary aliases conflict", async () => {
+    const sleeperProviderId = "44444444-4444-4444-8444-444444444444";
+    const yahooProviderId = "55555555-5555-4555-8555-555555555555";
+    const firstPlayerId = "aaaaaaaa-0000-4000-8000-000000000001";
+    const secondPlayerId = "aaaaaaaa-0000-4000-8000-000000000002";
+    client.query
+      .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: sleeperProviderId,
+            slug: "sleeper",
+            name: "Sleeper",
+            created_at: importedAt,
+          },
+        ],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: yahooProviderId,
+            slug: "yahoo",
+            name: "Yahoo",
+            created_at: importedAt,
+          },
+        ],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ player_id: firstPlayerId }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [{ player_id: secondPlayerId }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    await persistProviderSnapshot({
+      ...persistInput,
+      records: [],
+      playerIdentities: [
+        {
+          externalPlayerId: "primary-unmapped",
+          fullName: "Shared Identity",
+          position: "WR",
+          nflTeam: "NYJ",
+          byeWeek: null,
+          status: "active",
+          aliases: [
+            {
+              providerSlug: "sleeper",
+              providerName: "Sleeper",
+              externalId: "sleeper-conflict",
+            },
+            {
+              providerSlug: "yahoo",
+              providerName: "Yahoo",
+              externalId: "yahoo-conflict",
+            },
+          ],
+          raw: { player: "Shared Identity" },
+        },
+      ],
+    });
+
+    const reviewInserts = client.query.mock.calls.filter((call) =>
+      String(call[0]).includes("insert into player_match_reviews"),
+    );
+    expect(reviewInserts.map((call) => call[1]?.[1])).toEqual([
+      "primary-unmapped",
+      "sleeper-conflict",
+      "yahoo-conflict",
+    ]);
+  });
+
   it("queues data records whose provider player ID has no canonical match", async () => {
     client.query
       .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
@@ -602,6 +688,47 @@ describe("provider ingestion repository", () => {
     );
     expect(String(update?.[0])).toContain("bye_week = coalesce($5, bye_week)");
     expect(update?.[1]?.[4]).toBeNull();
+  });
+
+  it("keeps current canonical metadata during a historical identity load", async () => {
+    const playerId = "aaaaaaaa-0000-4000-8000-000000000002";
+    client.query
+      .mockResolvedValueOnce({ rows: [snapshotRow], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ player_id: playerId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ player_id: playerId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    await persistProviderSnapshot({
+      ...persistInput,
+      records: [],
+      updateCanonicalPlayerMetadata: false,
+      playerIdentities: [
+        {
+          externalPlayerId: "runner-1",
+          fullName: "Historical Runner",
+          position: "RB",
+          nflTeam: "OAK",
+          byeWeek: 6,
+          status: "inactive",
+          aliases: [],
+          raw: { season: 2021 },
+        },
+      ],
+    });
+
+    expect(
+      client.query.mock.calls.some((call) =>
+        String(call[0]).includes("update players"),
+      ),
+    ).toBe(false);
+    expect(
+      client.query.mock.calls.some((call) =>
+        String(call[0]).includes("insert into provider_player_identity_records"),
+      ),
+    ).toBe(true);
   });
 
   it("reuses an existing fingerprint without inserting duplicate records", async () => {

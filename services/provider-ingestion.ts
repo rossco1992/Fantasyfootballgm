@@ -64,6 +64,7 @@ export type ProviderFreshness = ProviderIngestionHealth & {
 export type IngestionOptions = {
   store?: ProviderIngestionStore;
   clock?: () => Date;
+  updateCanonicalPlayerMetadata?: boolean;
 };
 
 function toJsonValue(value: unknown): JsonValue {
@@ -423,6 +424,8 @@ export async function ingestProviderData<TRawPayload>(
       games,
       rejections,
       importedAt: clock(),
+      updateCanonicalPlayerMetadata:
+        options.updateCanonicalPlayerMetadata !== false,
     });
   } catch (error) {
     return fail(

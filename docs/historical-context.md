@@ -64,3 +64,38 @@ Repositories expose three independent reads:
 If one dataset is missing, source coverage marks the provider refresh partial.
 If a provider fails entirely, the ingestion state keeps its last valid
 snapshot and records the failed attempt.
+
+## Historical backfill operations
+
+NOC-68 operationalizes the nflverse adapter for completed regular seasons from
+2021 through the previous NFL season, weeks 1–18. A season becomes eligible in
+February, after its January regular-season finale. The web dashboard can load a
+bounded range of up to four weeks at a time. This keeps authenticated Vercel
+requests within a predictable execution window while still allowing a phone or
+tablet operator to activate and retry data without terminal access.
+
+For a full production backfill, run the server-side command with the production
+database connection in `.env.local`:
+
+```bash
+npm run history:backfill -- --start-season=2021 --end-season=2025
+```
+
+The ending season should be changed to the latest completed season. Optional
+flags narrow the scope or explicitly refresh an already-complete delivery:
+
+```bash
+npm run history:backfill -- --start-season=2025 --start-week=1 --end-week=4
+npm run history:backfill -- --start-season=2025 --start-week=8 --end-week=8 --force
+```
+
+Each season/week is serialized independently. A successful scope is skipped on
+later runs unless `--force` is present; partial and failed scopes remain
+retryable. The adapter reuses the downloaded season files across all weeks in
+one command, so a full season does not download the same large CSV repeatedly.
+Sleeper trends are intentionally not part of this workflow.
+
+The dashboard coverage grid is backed by persisted ingestion runs and immutable
+snapshots. It shows the latest attempt for every supported season/week, record
+counts on hover, unresolved identities, and whether a usable prior snapshot was
+retained after a failed retry.

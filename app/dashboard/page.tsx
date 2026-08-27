@@ -1,5 +1,6 @@
 import { logoutAction } from "@/app/auth/actions";
 import { DataHealthPanel } from "@/components/data-health/data-health-panel";
+import { HistoricalBackfillPanel } from "@/components/data-health/historical-backfill-panel";
 import { LeagueConfigurationForm } from "@/components/league/league-configuration-form";
 import { PlayerCatalogPanel } from "@/components/player-catalog/player-catalog-panel";
 import { RosterSetupPanel } from "@/components/roster/roster-setup-panel";
@@ -7,6 +8,7 @@ import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { retrieveLeagueConfiguration } from "@/services/league-configurations";
 import { retrieveDataHealthSummary } from "@/services/data-health";
+import { retrieveHistoricalBackfillSummary } from "@/services/historical-backfill";
 import { retrievePlayerCatalogSummary } from "@/services/player-catalog";
 import { retrieveManualRoster } from "@/services/roster-setup";
 
@@ -22,11 +24,13 @@ export default async function DashboardPage({
     requireAuthenticatedUser(),
     searchParams,
   ]);
-  const [configuration, catalog, dataHealth] = await Promise.all([
-    retrieveLeagueConfiguration(user.id),
-    retrievePlayerCatalogSummary(),
-    retrieveDataHealthSummary(),
-  ]);
+  const [configuration, catalog, dataHealth, historicalBackfill] =
+    await Promise.all([
+      retrieveLeagueConfiguration(user.id),
+      retrievePlayerCatalogSummary(),
+      retrieveDataHealthSummary(),
+      retrieveHistoricalBackfillSummary(),
+    ]);
   const assignments = configuration
     ? await retrieveManualRoster(user.id, configuration.id)
     : [];
@@ -95,6 +99,8 @@ export default async function DashboardPage({
       />
 
       <DataHealthPanel summary={dataHealth} />
+
+      <HistoricalBackfillPanel summary={historicalBackfill} />
 
       {configuration ? (
         <>
