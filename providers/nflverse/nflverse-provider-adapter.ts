@@ -75,12 +75,26 @@ function errorMessage(error: unknown): string {
 }
 
 export class HttpNflverseDataClient implements NflverseDataClient {
+  private readonly requests = new Map<string, Promise<NflverseDataset>>();
+
   constructor(
     private readonly fetcher: typeof fetch = fetch,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
   async fetchDataset(
+    dataset: NflverseDatasetName,
+    sourceUrl: string,
+  ): Promise<NflverseDataset> {
+    const key = `${dataset}:${sourceUrl}`;
+    const existing = this.requests.get(key);
+    if (existing) return existing;
+    const request = this.loadDataset(dataset, sourceUrl);
+    this.requests.set(key, request);
+    return request;
+  }
+
+  private async loadDataset(
     dataset: NflverseDatasetName,
     sourceUrl: string,
   ): Promise<NflverseDataset> {

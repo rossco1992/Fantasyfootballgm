@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   providerGameCandidateSchema,
@@ -8,6 +8,7 @@ import {
 } from "@/domain/fantasy-data";
 import {
   NFLVERSE_DATASETS,
+  HttpNflverseDataClient,
   NflverseProviderAdapter,
   type NflverseDataClient,
   type NflverseDataset,
@@ -119,6 +120,24 @@ describeProviderAdapterContract({
 });
 
 describe("nflverse provider adapter", () => {
+  it("downloads each season dataset once when one client backfills multiple weeks", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response("season,week\n2025,1\n", {
+        status: 200,
+        headers: { "last-modified": "Mon, 08 Sep 2025 08:00:00 GMT" },
+      }),
+    );
+    const client = new HttpNflverseDataClient(fetcher);
+
+    const [first, second] = await Promise.all([
+      client.fetchDataset("weekly_rosters", "https://example.test/2025.csv"),
+      client.fetchDataset("weekly_rosters", "https://example.test/2025.csv"),
+    ]);
+
+    expect(first).toEqual(second);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it("normalizes canonical aliases, weekly history/usage, and schedule games", async () => {
     const instance = adapter();
     const snapshot = instance.normalize(await instance.fetch(request), request);

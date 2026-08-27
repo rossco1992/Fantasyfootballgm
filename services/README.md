@@ -21,6 +21,11 @@ aliases resolve market activity through the canonical player map. It also
 assembles player history, usage, matchup games, and separately attributed market
 trends for one season/week.
 
+`historical-backfill.ts` runs nflverse alone across resumable season/week
+ranges. Successful scopes are skipped unless explicitly refreshed, while
+partial and failed scopes remain retryable from the authenticated dashboard or
+the `history:backfill` server command.
+
 `data-health.ts` assembles provider freshness, failures, and unresolved player
 counts for the dashboard. It also applies authenticated manual match decisions
 through the persistence layer; provider-specific IDs never leak into ranking or
