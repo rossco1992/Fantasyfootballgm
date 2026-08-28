@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { isProtectedRoute, safeNextPath } from "@/lib/auth/routes";
+import {
+  isGuestOnlyRoute,
+  isProtectedRoute,
+  safeNextPath,
+} from "@/lib/auth/routes";
 
 describe("auth routes", () => {
   it("protects authenticated-only routes", () => {
@@ -8,6 +12,14 @@ describe("auth routes", () => {
     expect(isProtectedRoute("/dashboard/leagues")).toBe(true);
     expect(isProtectedRoute("/auth/update-password")).toBe(true);
     expect(isProtectedRoute("/login")).toBe(false);
+  });
+
+  it("identifies entry routes that authenticated users should not revisit", () => {
+    expect(isGuestOnlyRoute("/")).toBe(true);
+    expect(isGuestOnlyRoute("/login")).toBe(true);
+    expect(isGuestOnlyRoute("/register")).toBe(true);
+    expect(isGuestOnlyRoute("/auth/forgot-password")).toBe(false);
+    expect(isGuestOnlyRoute("/dashboard")).toBe(false);
   });
 
   it("allows only local redirect destinations", () => {
