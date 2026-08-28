@@ -368,7 +368,13 @@ export class FantasyProsProviderAdapter implements FantasyDataProviderAdapter<Fa
     ) {
       throw new Error("All FantasyPros datasets were unavailable.");
     }
-    if (allRows(payload).length === 0) {
+    const normalized = this.normalize(payload, request);
+    const hasNormalizedData = [
+      normalized.players,
+      normalized.records,
+      normalized.games,
+    ].some((value) => Array.isArray(value) && value.length > 0);
+    if (!hasNormalizedData) {
       throw new Error("FantasyPros returned no recognized records.");
     }
     return payload;

@@ -170,4 +170,20 @@ describe("FantasyPros provider adapter", () => {
       "FantasyPros returned no recognized records.",
     );
   });
+
+  it("rejects non-empty rows when schema drift makes them unusable", async () => {
+    const unrecognized = structuredClone(payload);
+    for (const dataset of FANTASYPROS_DATASETS) {
+      unrecognized.datasets[dataset] = available({
+        players: [{ unexpected_field: "value" }],
+      });
+    }
+    const instance = new FantasyProsProviderAdapter({
+      fetchAll: async () => unrecognized,
+    });
+
+    await expect(instance.fetch(request)).rejects.toThrow(
+      "FantasyPros returned no recognized records.",
+    );
+  });
 });

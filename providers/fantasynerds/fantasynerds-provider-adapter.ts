@@ -54,6 +54,11 @@ export interface FantasyNerdsDataClient {
 
 const API_ROOT = "https://api.fantasynerds.com/v1/nfl";
 
+function currentNflSeason(date: Date): number {
+  const year = date.getUTCFullYear();
+  return date.getUTCMonth() < 2 ? year - 1 : year;
+}
+
 function scoringParameter(scoring: FantasyNerdsScoring): string {
   return scoring === "standard"
     ? "std"
@@ -88,6 +93,12 @@ export class HttpFantasyNerdsDataClient implements FantasyNerdsDataClient {
     request: ProviderIngestionRequest,
     scoring: FantasyNerdsScoring,
   ): Promise<FantasyNerdsPayload> {
+    const supportedSeason = currentNflSeason(this.clock());
+    if (request.season !== supportedSeason) {
+      throw new Error(
+        `Fantasy Nerds API only supports the current ${supportedSeason} NFL season. Use CSV import for historical seasons.`,
+      );
+    }
     const entries = await Promise.all(
       FANTASYNERDS_DATASETS.map(async (dataset) => {
         const endpoint = `${API_ROOT}/${resource(dataset, request)}`;
@@ -208,7 +219,30 @@ const PROJECTION_METADATA = new Set([
   "team_code",
   "proj_pts",
   "proj_pts_ppr",
+  "proj_pts_half",
+  "proj_pts_half_ppr",
 ]);
+
+function projectedPoints(
+  row: JsonRecord,
+  scoring: FantasyNerdsScoring,
+): number | null {
+  const standard = numberField(row, "proj_pts");
+  const ppr = numberField(row, "proj_pts_ppr");
+  if (scoring === "standard") return standard;
+  if (scoring === "ppr") return ppr ?? standard;
+
+  const providerHalfPpr = numberField(
+    row,
+    "proj_pts_half",
+    "proj_pts_half_ppr",
+  );
+  if (providerHalfPpr !== null) return providerHalfPpr;
+  if (standard !== null && ppr !== null) {
+    return standard + (ppr - standard) / 2;
+  }
+  return null;
+}
 
 function projectionRecords(
   payload: FantasyNerdsPayload,
@@ -225,11 +259,7 @@ function projectionRecords(
           normalized: {
             type: "projection",
             scoring,
-            projectedPoints: numberField(
-              row,
-              scoring === "ppr" ? "proj_pts_ppr" : "proj_pts",
-              "proj_pts",
-            ),
+            projectedPoints: projectedPoints(row, scoring),
             stats: numericStats(row, PROJECTION_METADATA),
           },
           raw: row,

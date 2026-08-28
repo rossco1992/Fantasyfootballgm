@@ -79,5 +79,8 @@ describe("projection source service", () => {
       ),
     ).resolves.toEqual(outcome);
     expect(run.mock.calls[0]?.[0].descriptor.slug).toBe("fantasypros-csv");
+    expect(run.mock.calls[0]?.[2]).toMatchObject({
+      updateCanonicalPlayerMetadata: false,
+    });
   });
 });

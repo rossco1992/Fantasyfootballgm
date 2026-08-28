@@ -99,13 +99,37 @@ describe("Fantasy Nerds provider adapter", () => {
     });
   });
 
+  it("derives half-PPR points halfway between standard and PPR", async () => {
+    const instance = new FantasyNerdsProviderAdapter(
+      new FixtureClient(),
+      "half_ppr",
+    );
+    const snapshot = instance.normalize(await instance.fetch(request), request);
+    const records = (snapshot.records as unknown[]).map((record) =>
+      providerRecordCandidateSchema.parse(record),
+    );
+    const projection = records.find(
+      (record) => record.normalized.type === "projection",
+    );
+
+    expect(projection?.normalized).toMatchObject({
+      type: "projection",
+      scoring: "half_ppr",
+      projectedPoints: 14.5,
+    });
+  });
+
   it("uses the provider-required query credential without retaining it in provenance", async () => {
     const fetcher = vi
       .fn()
       .mockResolvedValue(
         new Response(JSON.stringify({ players: [player] }), { status: 200 }),
       );
-    const client = new HttpFantasyNerdsDataClient("secret-key", fetcher);
+    const client = new HttpFantasyNerdsDataClient(
+      "secret-key",
+      fetcher,
+      () => new Date("2026-09-20T12:00:00.000Z"),
+    );
     const result = await client.fetchAll(request, "ppr");
     expect(fetcher).toHaveBeenCalledTimes(FANTASYNERDS_DATASETS.length);
     expect(
@@ -116,6 +140,22 @@ describe("Fantasy Nerds provider adapter", () => {
         (dataset) => !dataset.sourceUrl.includes("secret-key"),
       ),
     ).toBe(true);
+  });
+
+  it("rejects API refreshes for a season the provider cannot select", async () => {
+    const fetcher = vi.fn();
+    const client = new HttpFantasyNerdsDataClient(
+      "secret-key",
+      fetcher,
+      () => new Date("2026-09-20T12:00:00.000Z"),
+    );
+
+    await expect(
+      client.fetchAll({ ...request, season: 2025 }, "ppr"),
+    ).rejects.toThrow(
+      "Fantasy Nerds API only supports the current 2026 NFL season",
+    );
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("rejects an empty successful response instead of replacing valid data", async () => {

@@ -128,6 +128,10 @@ export async function importProjectionCsv(
   return run(
     adapter,
     { season: input.season, week: input.week },
-    { store: options.store, clock: options.clock },
+    {
+      store: options.store,
+      clock: options.clock,
+      updateCanonicalPlayerMetadata: false,
+    },
   );
 }
