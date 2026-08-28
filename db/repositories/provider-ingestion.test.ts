@@ -726,7 +726,9 @@ describe("provider ingestion repository", () => {
     ).toBe(false);
     expect(
       client.query.mock.calls.some((call) =>
-        String(call[0]).includes("insert into provider_player_identity_records"),
+        String(call[0]).includes(
+          "insert into provider_player_identity_records",
+        ),
       ),
     ).toBe(true);
   });
@@ -792,13 +794,8 @@ describe("provider ingestion repository", () => {
       status: "succeeded",
       unmatchedPlayerCount: 0,
     });
-    expect(String(client.query.mock.calls[2]?.[0])).toContain(
-      "not exists",
-    );
-    expect(client.query.mock.calls[2]?.[1]).toEqual([
-      snapshotId,
-      providerId,
-    ]);
+    expect(String(client.query.mock.calls[2]?.[0])).toContain("not exists");
+    expect(client.query.mock.calls[2]?.[1]).toEqual([snapshotId, providerId]);
   });
 
   it("marks a failed run without replacing the last successful snapshot", async () => {
