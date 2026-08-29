@@ -119,6 +119,72 @@ export function numericStats(
   return stats;
 }
 
+const PROJECTION_STAT_NAMES: Record<string, string> = {
+  passatt: "passingAttempts",
+  passingattempts: "passingAttempts",
+  passcmp: "passingCompletions",
+  passingcompletions: "passingCompletions",
+  passyd: "passingYards",
+  passyds: "passingYards",
+  passingyards: "passingYards",
+  passtd: "passingTouchdowns",
+  passtds: "passingTouchdowns",
+  passingtouchdowns: "passingTouchdowns",
+  passint: "passingInterceptions",
+  passints: "passingInterceptions",
+  passinginterceptions: "passingInterceptions",
+  rushatt: "rushingAttempts",
+  rushingattempts: "rushingAttempts",
+  rushyd: "rushingYards",
+  rushyds: "rushingYards",
+  rushingyards: "rushingYards",
+  rushtd: "rushingTouchdowns",
+  rushtds: "rushingTouchdowns",
+  rushingtouchdowns: "rushingTouchdowns",
+  targets: "targets",
+  rec: "receptions",
+  receptions: "receptions",
+  recyd: "receivingYards",
+  recyds: "receivingYards",
+  receivingyards: "receivingYards",
+  rectd: "receivingTouchdowns",
+  rectds: "receivingTouchdowns",
+  receivingtouchdowns: "receivingTouchdowns",
+  fumlost: "fumblesLost",
+  fumbleslost: "fumblesLost",
+  twopt: "twoPointConversions",
+  twopointconversions: "twoPointConversions",
+  xpm: "extraPointsMade",
+  extrapointsmade: "extraPointsMade",
+  fgm: "fieldGoalsMade",
+  fieldgoalsmade: "fieldGoalsMade",
+  fieldgoalsmade0to39: "fieldGoalsMade0To39",
+  fieldgoalsmade40to49: "fieldGoalsMade40To49",
+  fieldgoalsmade50plus: "fieldGoalsMade50Plus",
+  sacks: "defenseSacks",
+  defensesacks: "defenseSacks",
+  defenseinterceptions: "defenseInterceptions",
+  fumrec: "defenseFumbleRecoveries",
+  defensefumblerecoveries: "defenseFumbleRecoveries",
+  defensetouchdowns: "defenseTouchdowns",
+  defensesafeties: "defenseSafeties",
+  defenseblockedkicks: "defenseBlockedKicks",
+  defensereturntouchdowns: "defenseReturnTouchdowns",
+};
+
+/** Canonicalize common provider stat aliases at the adapter boundary. */
+export function normalizeProjectionStats(
+  stats: Record<string, number>,
+): Record<string, number> {
+  const normalized: Record<string, number> = {};
+  for (const [key, value] of Object.entries(stats)) {
+    const compactKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const canonical = PROJECTION_STAT_NAMES[compactKey] ?? key;
+    if (normalized[canonical] === undefined) normalized[canonical] = value;
+  }
+  return normalized;
+}
+
 export function observedAt(datasets: JsonDataset[], fallback: string): string {
   return (
     datasets

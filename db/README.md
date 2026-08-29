@@ -48,8 +48,8 @@ The initial schema implements the canonical, multi-source model from
 **ADR-002**: a canonical `players` identity, provider rows in `providers`,
 provider-specific IDs mapped in `player_external_ids`, and raw `player_projections`
 that retain their source and `source_timestamp` and are stored non-destructively
-(multiple sources/snapshots coexist; consensus values are derived separately in
-a later story).
+(multiple sources/snapshots coexist; consensus values are stored separately and
+never overwrite them).
 
 The canonical identity fields and deterministic matching strategy are documented
 in [`docs/player-identity.md`](../docs/player-identity.md).
@@ -79,3 +79,9 @@ Migration `0007_player_matching_and_data_health.sql` adds the durable
 `player_match_reviews` queue and append-only `player_match_audit_events`.
 Manual resolutions are stored as canonical provider aliases, so they survive
 future imports and resolve older immutable records at read time.
+
+Migration `0008_projection_consensus_and_accuracy.sql` adds immutable consensus
+snapshots and entries plus outcome/accuracy evidence. Each snapshot records its
+source snapshot IDs, weighting configuration/version, calculation version, and
+input fingerprint. Accuracy remains queryable by source, position, and horizon
+without changing the weights captured by prior snapshots.
