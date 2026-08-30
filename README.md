@@ -2,8 +2,8 @@
 
 A deterministic, data-grounded fantasy football assistant for draft, waiver, and
 lineup decisions. The current foundation includes authentication, one-league
-configuration, canonical player identity, and a CSV-only fantasy-data ingestion
-pipeline for uploaded player lists, rankings, ADP, and projections.
+configuration, canonical player identity, a server-side FantasyPros refresh,
+and CSV backup imports for player lists, rankings, ADP, and projections.
 
 ## Tech stack
 
@@ -73,6 +73,7 @@ runtime by [`lib/env.ts`](./lib/env.ts) using Zod.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public      | Supabase publishable anon key             |
 | `SUPABASE_SERVICE_ROLE_KEY`     | Server-only | Privileged Supabase key (server use only) |
 | `DATABASE_URL`                  | Server-only | Postgres migrations and persistence       |
+| `FANTASYPROS_API_KEY`           | Server-only | Personal FantasyPros API refresh          |
 
 ## Authentication
 
@@ -145,15 +146,15 @@ The app uses **Supabase Postgres**. The persistence layer lives in
 [`db/README.md`](./db/README.md) for the layer's structure and the canonical
 data model.
 
-Provider ingestion is append-only: CSV import attempts preserve
+Provider ingestion is append-only: FantasyPros and CSV import attempts preserve
 raw values, validated normalized records, adapter version, timestamps, and
 provenance. See [`providers/README.md`](./providers/README.md) for the adapter
 contract and [`services/README.md`](./services/README.md) for orchestration.
 
-Upload one or more FantasyPros or Fantasy Nerds CSV files from the dashboard.
-The uploaded player identities define the draftable pool, and recognized
-ranking, ADP, projection, injury, and status columns feed the recommendation
-pipeline. See [`docs/projection-sources.md`](./docs/projection-sources.md).
+Use the authenticated dashboard to refresh FantasyPros players, rankings, ADP,
+projections, and injuries. One or more FantasyPros or Fantasy Nerds CSV files
+can be uploaded as a backup. See
+[`docs/projection-sources.md`](./docs/projection-sources.md).
 
 ### Local/development setup
 

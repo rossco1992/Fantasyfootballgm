@@ -1,5 +1,5 @@
 import { logoutAction } from "@/app/auth/actions";
-import { CsvImportPanel } from "@/components/data/csv-import-panel";
+import { FantasyDataPanel } from "@/components/data/fantasy-data-panel";
 import { LeagueConfigurationForm } from "@/components/league/league-configuration-form";
 import { RosterSetupPanel } from "@/components/roster/roster-setup-panel";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
@@ -73,7 +73,7 @@ export default async function DashboardPage({
         </p>
       ) : null}
 
-      <CsvImportPanel
+      <FantasyDataPanel
         defaultScoring={configuration?.scoringPreset ?? "ppr"}
         season={new Date().getUTCFullYear()}
       />

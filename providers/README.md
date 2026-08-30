@@ -1,15 +1,15 @@
 # providers/
 
-CSV data adapters.
+FantasyPros API and CSV data adapters.
 
 Per **ADR-003 — Provider Adapter Boundary**, every external fantasy-data source
-Each uploaded fantasy-data file is processed by an adapter that converts its
-provider-specific columns into **normalized internal contracts** before
-persistence or ranking logic consumes them.
+Every FantasyPros API response or uploaded fantasy-data file is processed by an
+adapter that converts provider-specific fields into **normalized internal
+contracts** before persistence or ranking logic consumes them.
 
 Adapters own:
 
-- CSV parsing
+- API/CSV parsing
 - Provider-specific IDs (mapped to the canonical player — see **ADR-002**)
 - Mapping into normalized DTOs
 
@@ -42,6 +42,8 @@ Provider adapters do not write to Postgres. They hand candidates to
 `services/provider-ingestion.ts`, which owns lifecycle, idempotency, and
 persistence orchestration.
 
-`manual/` normalizes user-supplied FantasyPros and Fantasy Nerds exports.
+`fantasypros/` authenticates to the Public API v2 and normalizes current NFL
+players, consensus rankings/ADP, projections, and injuries. `manual/` normalizes
+user-supplied FantasyPros and Fantasy Nerds exports.
 Setup, supported fields, and import limits are documented in
 [`docs/projection-sources.md`](../docs/projection-sources.md).

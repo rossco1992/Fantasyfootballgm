@@ -1,28 +1,42 @@
-# CSV Data Imports
+# FantasyPros and CSV Data
 
-Fantasy Football GM accepts fantasy data only through CSV uploads. There are no
-API keys, automatic provider refreshes, scheduled imports, or historical
-backfill controls.
+FantasyPros Public API v2 is the personal MVP's only live fantasy-data source.
+CSV upload remains available as a manual backup for FantasyPros and Fantasy
+Nerds exports. Sleeper, nflverse, Yahoo, and the Fantasy Nerds API are not active
+integrations.
 
-## Upload workflow
+## FantasyPros refresh
 
-Use **Upload your CSV files** on the authenticated dashboard:
+Configure the server-only key in `.env.local` and every applicable Vercel
+environment:
 
-1. Select FantasyPros or Fantasy Nerds as the source.
-2. Choose the season, optional week, and scoring format.
-3. Select one or more `.csv` files.
-4. Choose **Upload CSV files**.
+```dotenv
+FANTASYPROS_API_KEY=""
+```
 
-A batch accepts up to 20 files, with a limit of 2 MB per file and 4 MB total.
-Each file is imported independently: valid files remain available even when a
-different file in the batch cannot be parsed.
+Never prefix this variable with `NEXT_PUBLIC_`, include it in a form, or print it
+in a log. The adapter sends it only in the `x-api-key` request header.
 
-Each filename has its own immutable snapshot stream. This allows separate
-rankings, ADP, projections, and player-list exports from the same source to
-coexist. Uploading a newer version with the same filename replaces that file's
-active snapshot without deleting its earlier snapshots.
+The authenticated dashboard's **Refresh FantasyPros data** action imports:
 
-## Supported columns
+| Signal            | Public API v2 request                                                                    |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| Draftable players | `/nfl/players?ecr=included&show=pos_rank`                                                |
+| ECR and ADP       | `/nfl/{season}/consensus-rankings?position=ALL&type=DRAFT&scoring={scoring}&week={week}` |
+| Projections       | `/nfl/{season}/projections?position=ALL&week={week}`                                     |
+| Injuries          | `/nfl/injuries?year={season}&week={week}&include_probabilities=true`                     |
+
+Pre-draft imports use week `0`. Standard, half-PPR, and PPR points are selected
+from the API's `points`, `points_half`, and `points_ppr` projection fields. Raw
+provider rows and normalized records are persisted together in one immutable
+snapshot. A response with no recognized player data is rejected so it cannot
+replace a usable prior snapshot.
+
+## CSV backup
+
+Expand **Upload CSV backup** on the dashboard, choose a source and scope, and
+select one or more `.csv` files. A batch accepts up to 20 files, with a limit of
+2 MB per file and 4 MB total. Each file is imported independently.
 
 Headers are case-insensitive and punctuation is normalized. Common supported
 columns include:
@@ -35,21 +49,14 @@ columns include:
 | Projection      | `projected_points`, `projection`, `fpts`, `fantasy_points`, common stat columns |
 | Injury          | `injury_status`, `game_status`, `injury`, `practice_status`                     |
 
-When an export omits a provider player ID, the adapter derives a stable fallback
-from normalized player name and position. Player matching still runs through the
-canonical identity pipeline. Player identities in the latest CSV snapshots
-collectively define the pool available in draft and roster tools.
+Each filename has its own snapshot stream, allowing separate player, ranking,
+ADP, and projection exports to coexist. When an export omits a provider player
+ID, the adapter derives a stable fallback from normalized name and position.
 
-## Data guarantees
+## Consensus behavior
 
-- Raw rows and normalized records are retained with source, timestamp, adapter
-  version, filename, and freshness metadata.
-- CSV coverage depends on the columns present; missing fields are not invented.
-- Existing immutable snapshots from older integrations remain in the database
-  for compatibility but cannot be refreshed from the product.
-- Consensus values remain separate from raw observations and keep the exact
-  source snapshots used in each calculation.
-
-For consensus, files from the same named source are treated as one correlated
-provider family. The freshest usable projection per player and provider family
-is selected before league scoring and uncertainty are calculated.
+FantasyPros API and FantasyPros CSV snapshots belong to the same provider
+family, so they are never double-counted. The freshest usable projection for a
+player and provider family is selected before league scoring and uncertainty are
+calculated. Consensus remains a derived record and never overwrites raw source
+data.

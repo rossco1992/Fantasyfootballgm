@@ -21,7 +21,8 @@ follow when implementing them.
   the same round as the prior year's draft round. Waiver/free-agent cost stays
   configurable until the league rule is confirmed.
 - Use a platform-independent domain model and provider adapters.
-- Accept fantasy data only through user-uploaded CSV files in the MVP.
+- Use one authenticated server-side FantasyPros API refresh as the primary
+  fantasy-data path, with CSV upload retained as a backup.
 - Do not build multi-league support, auctions, trades, write-back, public
   onboarding, billing, or commercial licensing in this MVP.
 
@@ -43,7 +44,7 @@ follow when implementing them.
    statistics or rankings.
 3. Normalize external fantasy data into an internal canonical data model before
    downstream use.
-4. Keep fantasy-data integrations behind provider adapters so sources can be
+4. Keep FantasyPros and CSV formats behind provider adapters so sources can be
    added or replaced without rewriting the product.
 5. Preserve raw provider values and immutable snapshots; compute consensus and
    personalized outputs separately.
@@ -58,8 +59,8 @@ follow when implementing them.
 ## Data Flow
 
 ```
-Manual league state + uploaded CSV files
-  → CSV Adapter
+Manual league state + FantasyPros API or uploaded CSV files
+  → Provider Adapter
   → Validation + Player Identity Matching
   → Raw Immutable Source Snapshots
   → Normalized Canonical Fantasy Data
@@ -71,11 +72,11 @@ Manual league state + uploaded CSV files
 
 ## Initial Data Strategy
 
-- Use FantasyPros and Fantasy Nerds CSV exports as the only fantasy-data input.
-- Allow multiple files in one upload so separate player, ranking, ADP, and
-  projection exports can be combined.
-- Treat identities in the latest uploaded CSV snapshots as the draftable player
-  pool.
+- Use the FantasyPros Public API v2 as the only live fantasy-data integration.
+- Keep FantasyPros and Fantasy Nerds CSV uploads as a manual backup, including
+  multiple files per batch.
+- Treat identities in the latest FantasyPros API and uploaded CSV snapshots as
+  the draftable player pool.
 - Maintain a canonical internal player ID.
 - Store external provider IDs separately.
 - Store raw value, normalized value, provider, season/week, observed-at,
@@ -83,8 +84,9 @@ Manual league state + uploaded CSV files
 - Do not collapse source data destructively. Consensus values are separate from
   raw observations.
 - Snapshot predictions before outcomes so source accuracy can be evaluated.
-- Keep existing immutable provider history for compatibility, but expose no
-  live provider refresh, credential, scheduled import, or backfill workflow.
+- Keep existing immutable provider history for compatibility. Expose one
+  authenticated FantasyPros refresh, but no Fantasy Nerds live API, Sleeper,
+  nflverse, Yahoo, or background backfill workflow.
 
 ## Decision-Engine Boundaries
 

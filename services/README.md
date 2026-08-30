@@ -10,7 +10,7 @@ Application services / use cases.
 - Keeps Supabase-specific and provider-specific concerns out of the UI and
   domain layers (see the Technical Architecture and ADR-004).
 
-`provider-ingestion.ts` is the shared on-demand CSV ingestion use case.
+`provider-ingestion.ts` is the shared on-demand API/CSV ingestion use case.
 It validates adapter output record by record, generates a deterministic source
 fingerprint, persists immutable snapshots, returns partial/failure details, and
 calculates source freshness. A failed attempt updates provider health but never
@@ -19,6 +19,10 @@ replaces the last valid snapshot.
 `csv-import.ts` validates and imports several user-selected files in one batch.
 Files are retained independently, so rankings and projections exported as
 separate CSVs can coexist and one malformed file does not discard valid files.
+
+`fantasypros-refresh.ts` creates the server-authenticated FantasyPros adapter
+and sends its normalized snapshot through that same ingestion pipeline. The API
+key never enters a form or browser response.
 
 `data-health.ts` assembles provider freshness, failures, and unresolved player
 counts for the dashboard. It also applies authenticated manual match decisions
