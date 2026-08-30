@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   queueDraftPlayerAction,
   recordDraftPickAction,
+  renameDraftTeamsAction,
   undoDraftPickAction,
   unqueueDraftPlayerAction,
   uploadYahooPlayersAction,
@@ -73,6 +74,9 @@ function Board({ room }: { room: DraftRoom }) {
     room.picks.map((pick) => [`${pick.round}:${pick.fantasyTeamSlot}`, pick]),
   );
   const current = room.picks.length + 1;
+  const teamName = (slot: number) =>
+    room.session?.teamNames[String(slot)] ??
+    (slot === room.league.draftPosition ? "My Team" : `Team ${slot}`);
 
   return (
     <section className="rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
@@ -83,17 +87,54 @@ function Board({ room }: { room: DraftRoom }) {
           </p>
           <h2 className="mt-1 text-xl font-bold">Pick {current}</h2>
         </div>
-        {room.picks.length ? (
-          <form action={undoDraftPickAction}>
-            <input name="leagueId" type="hidden" value={room.league.id} />
-            <button
-              className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-              type="submit"
-            >
-              Undo last pick
-            </button>
-          </form>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <details className="group relative">
+            <summary className="cursor-pointer list-none rounded-lg border border-neutral-300 px-3 py-2 text-xs font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900">
+              Edit team names
+            </summary>
+            <div className="absolute top-11 right-0 z-30 w-[min(42rem,calc(100vw-3rem))] rounded-xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-950">
+              <form action={renameDraftTeamsAction}>
+                <input name="leagueId" type="hidden" value={room.league.id} />
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: room.league.teamCount }, (_, index) => {
+                    const slot = index + 1;
+                    return (
+                      <label className="grid gap-1 text-xs" key={slot}>
+                        <span className="font-semibold text-neutral-500">
+                          Slot {slot}
+                        </span>
+                        <input
+                          className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                          defaultValue={teamName(slot)}
+                          maxLength={40}
+                          name={`teamName.${slot}`}
+                          required
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+                <button
+                  className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                  type="submit"
+                >
+                  Save team names
+                </button>
+              </form>
+            </div>
+          </details>
+          {room.picks.length ? (
+            <form action={undoDraftPickAction}>
+              <input name="leagueId" type="hidden" value={room.league.id} />
+              <button
+                className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+                type="submit"
+              >
+                Undo last pick
+              </button>
+            </form>
+          ) : null}
+        </div>
       </div>
       <div className="max-h-[32rem] overflow-auto">
         <div
@@ -113,7 +154,7 @@ function Board({ room }: { room: DraftRoom }) {
                 className={`sticky top-0 z-10 border-r border-b border-neutral-200 p-2 text-center text-xs font-semibold dark:border-neutral-800 ${mine ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100" : "bg-neutral-100 dark:bg-neutral-900"}`}
                 key={slot}
               >
-                {mine ? "My Team" : `Team ${slot}`}
+                {teamName(slot)}
               </div>
             );
           })}

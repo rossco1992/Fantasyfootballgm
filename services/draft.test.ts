@@ -5,9 +5,10 @@ import {
   insertDraftPick,
   listDraftPicks,
   listYahooDraftPlayers,
+  updateDraftTeamNames,
 } from "@/db/repositories/draft";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
-import { recordNextDraftPick } from "@/services/draft";
+import { recordNextDraftPick, renameDraftTeams } from "@/services/draft";
 import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
 
 vi.mock("@/db/repositories/draft", () => ({
@@ -19,6 +20,7 @@ vi.mock("@/db/repositories/draft", () => ({
   listDraftQueue: vi.fn(),
   listYahooDraftPlayers: vi.fn(),
   removeDraftQueueEntry: vi.fn(),
+  updateDraftTeamNames: vi.fn(),
   upsertDraftSession: vi.fn(),
 }));
 vi.mock("@/services/league-configurations", () => ({
@@ -50,6 +52,7 @@ describe("live draft service", () => {
       leagueId,
       season: 2026,
       status: "active",
+      teamNames: {},
       createdAt: new Date("2026-08-30T12:00:00Z"),
       updatedAt: new Date("2026-08-30T12:00:00Z"),
     });
@@ -107,5 +110,34 @@ describe("live draft service", () => {
       }),
     ).rejects.toThrow("not in the Yahoo draft pool");
     expect(insertDraftPick).not.toHaveBeenCalled();
+  });
+
+  it("saves trimmed names for every configured team", async () => {
+    const names = Object.fromEntries(
+      Array.from({ length: 12 }, (_, index) => [
+        String(index + 1),
+        ` Team ${index + 1} `,
+      ]),
+    );
+
+    await renameDraftTeams(userId, leagueId, names);
+
+    expect(updateDraftTeamNames).toHaveBeenCalledWith(
+      userId,
+      leagueId,
+      Object.fromEntries(
+        Array.from({ length: 12 }, (_, index) => [
+          String(index + 1),
+          `Team ${index + 1}`,
+        ]),
+      ),
+    );
+  });
+
+  it("requires a name for every team", async () => {
+    await expect(
+      renameDraftTeams(userId, leagueId, { "1": "My Team" }),
+    ).rejects.toThrow("Team 2 needs a name");
+    expect(updateDraftTeamNames).not.toHaveBeenCalled();
   });
 });

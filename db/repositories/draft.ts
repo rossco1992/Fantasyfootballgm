@@ -15,6 +15,7 @@ type DraftSessionRow = {
   league_id: string;
   season: number;
   status: "active" | "completed";
+  team_names: Record<string, string>;
   created_at: Date;
   updated_at: Date;
 };
@@ -57,6 +58,7 @@ function mapSession(row: DraftSessionRow): DraftSession {
     leagueId: row.league_id,
     season: row.season,
     status: row.status,
+    teamNames: row.team_names,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -99,6 +101,7 @@ export async function getDraftSessionForLeague(
 ): Promise<DraftSession | null> {
   const result = await query<DraftSessionRow>(
     `select session.id, session.league_id, session.season, session.status,
+            session.team_names,
             session.created_at, session.updated_at
        from draft_sessions session
        join league_configurations league on league.id = session.league_id
@@ -119,12 +122,32 @@ export async function upsertDraftSession(
      on conflict (league_id) do update set
        season = excluded.season,
        updated_at = now()
-     returning id, league_id, season, status, created_at, updated_at`,
+     returning id, league_id, season, status, team_names, created_at, updated_at`,
     [leagueId, userId, season],
   );
   const row = result.rows[0];
   if (!row) throw new Error("The draft session could not be created.");
   return mapSession(row);
+}
+
+export async function updateDraftTeamNames(
+  userId: string,
+  leagueId: string,
+  teamNames: Record<string, string>,
+): Promise<void> {
+  const result = await query(
+    `update draft_sessions session
+        set team_names = $3::jsonb,
+            updated_at = now()
+       from league_configurations league
+      where session.league_id = $1
+        and league.id = session.league_id
+        and league.user_id = $2`,
+    [leagueId, userId, JSON.stringify(teamNames)],
+  );
+  if (result.rowCount === 0) {
+    throw new Error("The draft session could not be updated.");
+  }
 }
 
 /** Latest user-uploaded Yahoo catalog with its ranking signals. */

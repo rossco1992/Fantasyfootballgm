@@ -7,6 +7,7 @@ import {
   listDraftQueue,
   listYahooDraftPlayers,
   removeDraftQueueEntry,
+  updateDraftTeamNames,
   upsertDraftSession,
 } from "@/db/repositories/draft";
 import {
@@ -86,6 +87,27 @@ export async function startDraftRoom(
 ): Promise<DraftSession> {
   await ownedLeague(userId, leagueId);
   return upsertDraftSession(userId, leagueId, season);
+}
+
+export async function renameDraftTeams(
+  userId: string,
+  leagueId: string,
+  rawTeamNames: Record<string, string>,
+): Promise<void> {
+  const league = await ownedLeague(userId, leagueId);
+  const session = await getDraftSessionForLeague(userId, leagueId);
+  if (!session) throw new DraftRoomError("Start the draft room first.");
+
+  const teamNames: Record<string, string> = {};
+  for (let slot = 1; slot <= league.teamCount; slot += 1) {
+    const name = rawTeamNames[String(slot)]?.trim();
+    if (!name) throw new DraftRoomError(`Team ${slot} needs a name.`);
+    if (name.length > 40) {
+      throw new DraftRoomError("Team names must be 40 characters or fewer.");
+    }
+    teamNames[String(slot)] = name;
+  }
+  await updateDraftTeamNames(userId, leagueId, teamNames);
 }
 
 export async function recordNextDraftPick(input: {
