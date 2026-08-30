@@ -52,7 +52,7 @@ describe("manual projection CSV adapter", () => {
     expect(records[2]?.normalized).toMatchObject({
       type: "projection",
       projectedPoints: 287.4,
-      stats: { rushing_yards: 1080 },
+      stats: { rushingYards: 1080 },
     });
   });
 

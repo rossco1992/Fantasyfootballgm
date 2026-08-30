@@ -30,3 +30,8 @@ the `history:backfill` server command.
 counts for the dashboard. It also applies authenticated manual match decisions
 through the persistence layer; provider-specific IDs never leak into ranking or
 UI logic as canonical identities.
+
+`projection-consensus.ts` selects the freshest projection per provider family,
+applies the versioned deterministic blend, persists an immutable consensus
+snapshot, and evaluates frozen provider/consensus predictions against later
+outcomes. Replaying identical inputs produces the same fingerprint.

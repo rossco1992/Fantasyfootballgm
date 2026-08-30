@@ -8,6 +8,7 @@ import type {
 import { normalizePlayerName } from "@/domain/player";
 import { parseCsv, type CsvRow } from "@/providers/shared/csv";
 import {
+  normalizeProjectionStats,
   playerPosition,
   playerStatus,
 } from "@/providers/shared/normalized-feed";
@@ -114,7 +115,7 @@ function stats(row: CsvRow): Record<string, number> {
     const value = numeric(row, key);
     if (value !== null) result[key] = value;
   }
-  return result;
+  return normalizeProjectionStats(result);
 }
 
 function identities(

@@ -111,6 +111,10 @@ describe("FantasyPros provider adapter", () => {
       "injury",
       "news",
     ]);
+    expect(records[2]?.normalized).toMatchObject({
+      type: "projection",
+      stats: { rushingYards: 1080 },
+    });
     expect(records[3]?.normalized).toMatchObject({
       type: "injury",
       status: "questionable",

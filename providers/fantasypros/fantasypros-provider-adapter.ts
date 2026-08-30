@@ -11,6 +11,7 @@ import {
   fetchJsonDataset,
   numberField,
   numericStats,
+  normalizeProjectionStats,
   observedAt,
   playerPosition,
   playerStatus,
@@ -285,7 +286,9 @@ function projections(
             "projected_points",
             "fpts",
           ),
-          stats: numericStats(row, PROJECTION_METADATA),
+          stats: normalizeProjectionStats(
+            numericStats(row, PROJECTION_METADATA),
+          ),
         },
         raw: row,
       },

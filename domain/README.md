@@ -21,3 +21,8 @@ strategy implemented in `player.ts`.
 projections, rankings, ADP, injuries, news, historical performance, usage, and
 market trends. Provider payloads are validated against these contracts before
 they enter the canonical persistence layer.
+
+`projection-consensus.ts` re-scores normalized projection stat lines under the
+league preset, blends configurable provider weights, caps correlated source
+groups to one vote, and returns range, standard deviation, confidence, and
+traceable component factors. It contains no database or provider I/O.

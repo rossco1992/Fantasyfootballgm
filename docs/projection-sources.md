@@ -61,3 +61,20 @@ manual review.
   failed refresh, preserving the last valid snapshot.
 - Provider data is for the configured account's permitted personal use and is
   not redistributed by the app.
+
+## Consensus and uncertainty
+
+Consensus projections are derived records; they never replace provider data.
+For each league and season/week scope the app:
+
+1. selects the newest API or CSV delivery from each provider family;
+2. recalculates normalized stat lines under the league scoring preset when a
+   scorable stat line is available;
+3. applies a versioned weighting configuration;
+4. averages highly correlated expert-consensus feeds as one source group; and
+5. stores the consensus, provider range, standard deviation, confidence, and
+   exact contributing snapshots.
+
+Later outcomes create separate provider and consensus error records. Summaries
+can inform a new future weighting version by position and horizon, but never
+rewrite an existing projection snapshot.
