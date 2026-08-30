@@ -21,7 +21,9 @@ function draftUrl(
   return `/draft?tab=${encodeURIComponent(tab)}&${kind}=${encodeURIComponent(message)}`;
 }
 
-export async function uploadYahooPlayersAction(formData: FormData) {
+export async function uploadYahooPlayersAction(
+  formData: FormData,
+): Promise<never> {
   const user = await requireAuthenticatedUser();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
@@ -36,28 +38,47 @@ export async function uploadYahooPlayersAction(formData: FormData) {
 
   const leagueId = String(formData.get("leagueId") ?? "");
   const season = Number(formData.get("season"));
-  const result = await importCsvBatch({
-    provider: "yahoo",
-    season,
-    week: null,
-    scoring: String(formData.get("scoring") ?? "ppr"),
-    files: [
-      {
-        csv: await file.text(),
-        fileName: file.name,
-        observedAt: new Date().toISOString(),
-      },
-    ],
-  });
+  let result: Awaited<ReturnType<typeof importCsvBatch>>;
+  try {
+    result = await importCsvBatch({
+      provider: "yahoo",
+      season,
+      week: null,
+      scoring: String(formData.get("scoring") ?? "ppr"),
+      files: [
+        {
+          csv: await file.text(),
+          fileName: file.name,
+          observedAt: new Date().toISOString(),
+        },
+      ],
+    });
+  } catch {
+    redirect(
+      draftUrl(
+        "error",
+        "The Yahoo CSV could not be imported. Check the file format and try again.",
+      ),
+    );
+  }
   if (result.files[0]?.status !== "imported") {
     redirect(
       draftUrl(
         "error",
-        "The Yahoo CSV did not contain recognizable player, position, and rank columns.",
+        "The Yahoo CSV needs Player, Position (or Pos), and Rank (or ADP) columns.",
       ),
     );
   }
-  await startDraftRoom(user.id, leagueId, season);
+  try {
+    await startDraftRoom(user.id, leagueId, season);
+  } catch {
+    redirect(
+      draftUrl(
+        "error",
+        "The players imported, but the draft room could not start. Refresh and try again.",
+      ),
+    );
+  }
   revalidatePath("/draft");
   redirect(
     draftUrl("message", "Yahoo players loaded. Your draft room is ready."),
