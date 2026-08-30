@@ -7,6 +7,7 @@ import {
   unqueueDraftPlayerAction,
   uploadYahooPlayersAction,
 } from "@/app/draft/actions";
+import { DraftUploadForm } from "@/components/draft/draft-upload-form";
 import type { DraftPick, DraftPlayer } from "@/domain/draft";
 import type { DraftRoom } from "@/services/draft";
 
@@ -323,32 +324,12 @@ export function DraftRoomView({
             {error}
           </p>
         ) : null}
-        <form action={uploadYahooPlayersAction} className="mt-6 grid gap-4">
-          <input name="leagueId" type="hidden" value={room.league.id} />
-          <input
-            name="season"
-            type="hidden"
-            value={new Date().getUTCFullYear()}
-          />
-          <input
-            name="scoring"
-            type="hidden"
-            value={room.league.scoringPreset}
-          />
-          <input
-            accept=".csv,text/csv"
-            className="block w-full rounded-lg border border-neutral-300 p-3 text-sm dark:border-neutral-700"
-            name="file"
-            required
-            type="file"
-          />
-          <button
-            className="w-fit rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
-            type="submit"
-          >
-            Load draft room
-          </button>
-        </form>
+        <DraftUploadForm
+          action={uploadYahooPlayersAction}
+          leagueId={room.league.id}
+          scoring={room.league.scoringPreset}
+          season={new Date().getUTCFullYear()}
+        />
       </section>
     );
   }
@@ -391,29 +372,13 @@ export function DraftRoomView({
         <summary className="cursor-pointer text-sm font-semibold">
           Replace Yahoo player file
         </summary>
-        <form
+        <DraftUploadForm
           action={uploadYahooPlayersAction}
-          className="mt-4 flex flex-col gap-3 sm:flex-row"
-        >
-          <input name="leagueId" type="hidden" value={room.league.id} />
-          <input
-            name="season"
-            type="hidden"
-            value={new Date().getUTCFullYear()}
-          />
-          <input
-            name="scoring"
-            type="hidden"
-            value={room.league.scoringPreset}
-          />
-          <input accept=".csv,text/csv" name="file" required type="file" />
-          <button
-            className="rounded-lg border px-4 py-2 text-sm font-semibold"
-            type="submit"
-          >
-            Upload replacement
-          </button>
-        </form>
+          leagueId={room.league.id}
+          replacement
+          scoring={room.league.scoringPreset}
+          season={new Date().getUTCFullYear()}
+        />
       </details>
     </div>
   );
