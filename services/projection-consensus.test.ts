@@ -128,7 +128,7 @@ describe("projection consensus service", () => {
         18,
       ),
       source(
-        "fantasypros-csv",
+        "fantasypros-csv-a1b2c3d4e5f6",
         "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         "2026-08-29T12:00:00.000Z",
         20,
@@ -164,7 +164,7 @@ describe("projection consensus service", () => {
     });
     expect(
       result.entries[0]?.components.map((component) => component.providerSlug),
-    ).toEqual(["fantasynerds", "fantasypros-csv"]);
+    ).toEqual(["fantasynerds", "fantasypros-csv-a1b2c3d4e5f6"]);
     expect(result.sourceSnapshotIds).toEqual([
       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",

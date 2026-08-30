@@ -22,7 +22,6 @@ import {
   ingestProviderData,
   retrieveProviderFreshness,
   runOnDemandProviderIngestion,
-  runScheduledProviderIngestion,
   type ProviderIngestionStore,
 } from "@/services/provider-ingestion";
 
@@ -171,18 +170,6 @@ describe("provider ingestion service", () => {
     });
     expect(store.starts[0]?.trigger).toBe("on_demand");
     expect(store.snapshots.size).toBe(1);
-  });
-
-  it("uses the same pipeline for scheduled refreshes", async () => {
-    const store = new MemoryIngestionStore();
-    const result = await runScheduledProviderIngestion(
-      new FixtureProviderAdapter(),
-      { season: 2026, week: 1 },
-      { store },
-    );
-
-    expect(result.status).toBe("succeeded");
-    expect(store.starts[0]?.trigger).toBe("scheduled");
   });
 
   it("does not duplicate a snapshot when the same source response is re-run", async () => {

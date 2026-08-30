@@ -108,11 +108,23 @@ function resolvedWeightingConfig(
   const parsed = projectionWeightingConfigSchema.parse(input);
   const providers = { ...parsed.providers };
   for (const source of sources) {
-    providers[source.providerSlug] ??= {
-      weight: 1,
-      sourceFamily: source.providerSlug,
-      correlationGroup: `independent:${source.providerSlug}`,
-    };
+    if (providers[source.providerSlug]) continue;
+    const csvFamily = source.providerSlug.startsWith("fantasypros-csv")
+      ? "fantasypros"
+      : source.providerSlug.startsWith("fantasynerds-csv")
+        ? "fantasynerds"
+        : null;
+    providers[source.providerSlug] = csvFamily
+      ? {
+          weight: 1,
+          sourceFamily: csvFamily,
+          correlationGroup: "expert-consensus",
+        }
+      : {
+          weight: 1,
+          sourceFamily: source.providerSlug,
+          correlationGroup: `independent:${source.providerSlug}`,
+        };
   }
   return { ...parsed, providers };
 }

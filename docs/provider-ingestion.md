@@ -1,12 +1,12 @@
 # Provider Ingestion Pipeline
 
-NOC-10 establishes one append-only path for every fantasy-data provider. It is
-provider-neutral and does not require Yahoo or paid API credentials.
+NOC-10 establishes one append-only path for fantasy-data imports. The active
+product uses that provider-neutral foundation only for uploaded CSV files.
 
 ## Lifecycle
 
-1. A scheduled or on-demand caller invokes `services/provider-ingestion.ts`.
-2. The adapter fetches its provider-specific payload and normalizes it.
+1. The authenticated CSV upload invokes `services/provider-ingestion.ts`.
+2. The adapter parses its file and normalizes it.
 3. Snapshot metadata and each record are validated independently.
 4. Valid player signals, explicit player-ID crosswalks, and game records are
    persisted with their raw source values; invalid records are quarantined with
@@ -33,27 +33,18 @@ source_fingerprint)`. Snapshot and record update/delete triggers require any
 correction to arrive as a new snapshot, preserving historical evidence for
 future forecast-accuracy evaluation.
 
-NOC-61 extends the same sealed snapshot with canonical player identity evidence
-and games. See [`historical-context.md`](./historical-context.md).
-
-NOC-66 uses that identity path for the current Sleeper NFL player catalog. The
-catalog adapter has its own provider-health slug while also writing the native
-Sleeper player ID as an alias, so Sleeper market-trend records resolve to the
-same canonical player. A daily freshness gate avoids repeatedly downloading the
-large catalog. Catalog metadata is identity evidence only and must never be
-presented as rankings, ADP, or projections. Attribution and the documented
-personal/non-commercial licensing boundary are retained in snapshot provenance.
+Uploaded CSV player rows use the same identity path. The freshest snapshots for
+each uploaded filename collectively define the draftable player pool.
 
 ## Adding a provider
 
 1. Implement `FantasyDataProviderAdapter` from `providers/types.ts`.
-2. Keep authentication, pagination, rate-limit handling, and raw parsing inside
-   the adapter.
+2. Keep provider-specific column parsing inside the adapter.
 3. Emit only the normalized contracts from `domain/fantasy-data.ts`.
 4. Apply `describeProviderAdapterContract` from
    `tests/contracts/provider-adapter.contract.ts` to representative fixtures.
-5. Invoke the same ingestion service for scheduled and manual refreshes.
+5. Invoke the same ingestion service from the authenticated CSV workflow.
 
 The fixture adapter under `providers/fixture/` is the executable example.
-Additional FantasyPros, FantasyNerds, and future adapters should not require
-changes to the service, persistence schema, or downstream query contract.
+Additional CSV formats should not require changes to the service, persistence
+schema, or downstream query contract.

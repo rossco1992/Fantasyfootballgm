@@ -76,4 +76,19 @@ describe("manual projection CSV adapter", () => {
       ),
     ).toThrow("Projection CSV contained no recognized player records.");
   });
+
+  it("accepts a player-list CSV without rankings or projections", async () => {
+    const instance = new ManualProjectionCsvAdapter(
+      "fantasypros",
+      "PLAYER NAME,POS,TEAM\nExample Runner,RB,SF\nExample Passer,QB,BUF",
+      "all-players.csv",
+      "2026-08-27T12:00:00.000Z",
+      "ppr",
+    );
+
+    const snapshot = instance.normalize(await instance.fetch(), request);
+
+    expect(snapshot.players).toHaveLength(2);
+    expect(snapshot.records).toEqual([]);
+  });
 });

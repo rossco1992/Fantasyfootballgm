@@ -81,17 +81,15 @@ describe("canonical player repository", () => {
     });
 
     expect(players).toHaveLength(1);
-    expect(vi.mocked(query).mock.calls[0]?.[1]).toEqual([
-      "sleeper-player-catalog",
-      "Example",
-      "RB",
-      25,
-    ]);
+    expect(vi.mocked(query).mock.calls[0]?.[1]).toEqual(["Example", "RB", 25]);
     expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
       "status not in ('inactive', 'retired')",
     );
     expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
       "ingestion_state.latest_snapshot_id = identity_record.snapshot_id",
+    );
+    expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
+      "fantasypros-csv%",
     );
   });
 
@@ -99,9 +97,7 @@ describe("canonical player repository", () => {
     vi.mocked(query).mockResolvedValue({ rows: [{ count: 642 }] } as never);
 
     await expect(countDraftablePlayers()).resolves.toBe(642);
-    expect(vi.mocked(query).mock.calls[0]?.[1]).toEqual([
-      "sleeper-player-catalog",
-    ]);
+    expect(vi.mocked(query).mock.calls[0]?.[1]).toBeUndefined();
     expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
       "ingestion_state.latest_snapshot_id = identity_record.snapshot_id",
     );

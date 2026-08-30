@@ -4,8 +4,8 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
     serverActions: {
-      // The CSV validator permits 2 MB files; leave room for multipart overhead.
-      bodySizeLimit: "3mb",
+      // CSV batches are capped at 4 MB; leave room for multipart overhead.
+      bodySizeLimit: "5mb",
     },
   },
   // Type checking and linting are run explicitly in CI via `npm run typecheck`
