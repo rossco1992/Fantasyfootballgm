@@ -36,7 +36,8 @@ const LATEST_CATALOG_MEMBERSHIP_SQL = `exists (
       on catalog_provider.id = ingestion_state.provider_id
    where identity_record.player_id = players.id
      and (
-       catalog_provider.slug like 'fantasypros-csv%'
+       catalog_provider.slug = 'fantasypros'
+       or catalog_provider.slug like 'fantasypros-csv%'
        or catalog_provider.slug like 'fantasynerds-csv%'
      )
 )`;

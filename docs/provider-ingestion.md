@@ -1,12 +1,13 @@
 # Provider Ingestion Pipeline
 
-NOC-10 establishes one append-only path for fantasy-data imports. The active
-product uses that provider-neutral foundation only for uploaded CSV files.
+NOC-10 establishes one append-only path for fantasy-data imports. FantasyPros
+API responses and uploaded CSV files use the same provider-neutral foundation.
 
 ## Lifecycle
 
-1. The authenticated CSV upload invokes `services/provider-ingestion.ts`.
-2. The adapter parses its file and normalizes it.
+1. The authenticated FantasyPros refresh or CSV upload invokes
+   `services/provider-ingestion.ts`.
+2. The adapter fetches/parses its source and normalizes it.
 3. Snapshot metadata and each record are validated independently.
 4. Valid player signals, explicit player-ID crosswalks, and game records are
    persisted with their raw source values; invalid records are quarantined with
@@ -33,18 +34,19 @@ source_fingerprint)`. Snapshot and record update/delete triggers require any
 correction to arrive as a new snapshot, preserving historical evidence for
 future forecast-accuracy evaluation.
 
-Uploaded CSV player rows use the same identity path. The freshest snapshots for
-each uploaded filename collectively define the draftable player pool.
+FantasyPros API and uploaded CSV player rows use the same identity path. Their
+freshest snapshots collectively define the draftable player pool.
 
 ## Adding a provider
 
 1. Implement `FantasyDataProviderAdapter` from `providers/types.ts`.
-2. Keep provider-specific column parsing inside the adapter.
+2. Keep provider authentication and provider-specific parsing inside the
+   adapter.
 3. Emit only the normalized contracts from `domain/fantasy-data.ts`.
 4. Apply `describeProviderAdapterContract` from
    `tests/contracts/provider-adapter.contract.ts` to representative fixtures.
-5. Invoke the same ingestion service from the authenticated CSV workflow.
+5. Invoke the same ingestion service from an authenticated server workflow.
 
 The fixture adapter under `providers/fixture/` is the executable example.
-Additional CSV formats should not require changes to the service, persistence
-schema, or downstream query contract.
+Additional API versions or CSV formats should not require changes to the
+service, persistence schema, or downstream query contract.

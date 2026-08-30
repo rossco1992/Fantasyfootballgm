@@ -91,6 +91,9 @@ describe("canonical player repository", () => {
     expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
       "fantasypros-csv%",
     );
+    expect(String(vi.mocked(query).mock.calls[0]?.[0])).toContain(
+      "catalog_provider.slug = 'fantasypros'",
+    );
   });
 
   it("reports the available draftable player count", async () => {

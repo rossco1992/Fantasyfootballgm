@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { getPublicEnv, getServerEnv } from "@/lib/env";
+import { getFantasyProsEnv, getPublicEnv, getServerEnv } from "@/lib/env";
 
 describe("env", () => {
   const original = { ...process.env };
@@ -9,6 +9,7 @@ describe("env", () => {
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete process.env.FANTASYPROS_API_KEY;
   });
 
   afterEach(() => {
@@ -46,5 +47,16 @@ describe("env", () => {
 
   it("throws a descriptive error when server env is missing", () => {
     expect(() => getServerEnv()).toThrowError(/SUPABASE_SERVICE_ROLE_KEY/);
+  });
+
+  it("parses the server-only FantasyPros API key", () => {
+    process.env.FANTASYPROS_API_KEY = "personal-api-key";
+    expect(getFantasyProsEnv()).toEqual({
+      FANTASYPROS_API_KEY: "personal-api-key",
+    });
+  });
+
+  it("requires a FantasyPros API key only when the integration is used", () => {
+    expect(() => getFantasyProsEnv()).toThrowError(/FANTASYPROS_API_KEY/);
   });
 });

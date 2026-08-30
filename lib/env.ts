@@ -30,8 +30,16 @@ const serverSchema = z.object({
     .min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
 });
 
+const fantasyProsSchema = z.object({
+  FANTASYPROS_API_KEY: z
+    .string()
+    .trim()
+    .min(1, "FANTASYPROS_API_KEY is required"),
+});
+
 export type PublicEnv = z.infer<typeof publicSchema>;
 export type ServerEnv = z.infer<typeof serverSchema>;
+export type FantasyProsEnv = z.infer<typeof fantasyProsSchema>;
 
 function formatIssues(error: z.ZodError): string {
   return error.issues
@@ -79,5 +87,19 @@ export function getServerEnv(): ServerEnv {
     );
   }
 
+  return parsed.data;
+}
+
+/** Server-only credentials for the FantasyPros Public API. */
+export function getFantasyProsEnv(): FantasyProsEnv {
+  const parsed = fantasyProsSchema.safeParse({
+    FANTASYPROS_API_KEY: process.env.FANTASYPROS_API_KEY,
+  });
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid FantasyPros environment configuration:\n${formatIssues(parsed.error)}\n` +
+        "See .env.example for the required variable.",
+    );
+  }
   return parsed.data;
 }
