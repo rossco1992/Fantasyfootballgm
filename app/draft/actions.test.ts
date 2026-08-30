@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { uploadYahooPlayersAction } from "@/app/draft/actions";
+import {
+  renameDraftTeamsAction,
+  uploadYahooPlayersAction,
+} from "@/app/draft/actions";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { importCsvBatch } from "@/services/csv-import";
-import { startDraftRoom } from "@/services/draft";
+import { renameDraftTeams, startDraftRoom } from "@/services/draft";
 
 const { redirect, revalidatePath } = vi.hoisted(() => ({
   redirect: vi.fn((path: string) => {
@@ -22,6 +25,7 @@ vi.mock("@/services/csv-import", async (importOriginal) => {
 vi.mock("@/services/draft", () => ({
   queueDraftPlayer: vi.fn(),
   recordNextDraftPick: vi.fn(),
+  renameDraftTeams: vi.fn(),
   startDraftRoom: vi.fn(),
   undoLastDraftPick: vi.fn(),
   unqueueDraftPlayer: vi.fn(),
@@ -104,5 +108,22 @@ describe("Yahoo draft upload action", () => {
       /players%20imported%2C%20but%20the%20draft%20room%20could%20not%20start/,
     );
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("saves editable team names", async () => {
+    const data = new FormData();
+    data.set("leagueId", "44444444-4444-4444-8444-444444444444");
+    data.set("teamName.1", "My Team");
+    data.set("teamName.2", "The Rivals");
+
+    await expect(renameDraftTeamsAction(data)).rejects.toThrow(
+      "REDIRECT:/draft?tab=available&message=Team%20names%20saved.",
+    );
+    expect(renameDraftTeams).toHaveBeenCalledWith(
+      user.id,
+      "44444444-4444-4444-8444-444444444444",
+      { "1": "My Team", "2": "The Rivals" },
+    );
+    expect(revalidatePath).toHaveBeenCalledWith("/draft");
   });
 });

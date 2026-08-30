@@ -7,6 +7,7 @@ import { requireAuthenticatedUser } from "@/lib/auth/session";
 import {
   queueDraftPlayer,
   recordNextDraftPick,
+  renameDraftTeams,
   startDraftRoom,
   undoLastDraftPick,
   unqueueDraftPlayer,
@@ -100,6 +101,23 @@ export async function recordDraftPickAction(formData: FormData) {
   }
   revalidatePath("/draft");
   redirect(draftUrl("message", "Pick recorded.", tab));
+}
+
+export async function renameDraftTeamsAction(formData: FormData) {
+  const user = await requireAuthenticatedUser();
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const teamNames = Object.fromEntries(
+    [...formData.entries()]
+      .filter(([key]) => key.startsWith("teamName."))
+      .map(([key, value]) => [key.slice("teamName.".length), String(value)]),
+  );
+  try {
+    await renameDraftTeams(user.id, leagueId, teamNames);
+  } catch {
+    redirect(draftUrl("error", "Team names could not be saved."));
+  }
+  revalidatePath("/draft");
+  redirect(draftUrl("message", "Team names saved."));
 }
 
 export async function undoDraftPickAction(formData: FormData) {
