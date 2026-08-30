@@ -62,6 +62,9 @@ describe("database schema and seed", () => {
         "provider_ingestion_state",
         "player_match_reviews",
         "player_match_audit_events",
+        "draft_sessions",
+        "draft_picks",
+        "draft_queue_entries",
       ]),
     );
   });

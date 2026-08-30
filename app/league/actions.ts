@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 import type { LeagueFormState } from "@/app/league/form-state";
 import { leagueConfigurationInputSchema } from "@/domain/league-configuration";
@@ -54,5 +54,9 @@ export async function saveLeagueConfigurationAction(
     };
   }
 
-  redirect("/dashboard?message=League%20settings%20saved.");
+  revalidatePath("/dashboard");
+  return {
+    status: "success",
+    message: "League settings saved.",
+  };
 }

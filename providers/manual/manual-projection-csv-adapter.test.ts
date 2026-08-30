@@ -91,4 +91,42 @@ describe("manual projection CSV adapter", () => {
     expect(snapshot.players).toHaveLength(2);
     expect(snapshot.records).toEqual([]);
   });
+
+  it("normalizes Yahoo player-list rank and average-pick headings", async () => {
+    const instance = new ManualProjectionCsvAdapter(
+      "yahoo",
+      "Yahoo ID,Player,Team,Pos,Bye,O-Rank,Average Pick\n123,Example Runner,SF,RB,9,7,11.4",
+      "yahoo-players.csv",
+      "2026-08-30T12:00:00.000Z",
+      "half_ppr",
+    );
+
+    const snapshot = instance.normalize(await instance.fetch(), request);
+    const players = (snapshot.players as unknown[]).map((entry) =>
+      providerPlayerIdentityCandidateSchema.parse(entry),
+    );
+    const records = (snapshot.records as unknown[]).map((entry) =>
+      providerRecordCandidateSchema.parse(entry),
+    );
+
+    expect(instance.descriptor).toMatchObject({
+      slug: expect.stringMatching(/^yahoo-csv-[a-f0-9]{12}$/),
+      name: expect.stringContaining("Yahoo CSV"),
+    });
+    expect(players[0]).toMatchObject({
+      externalPlayerId: "123",
+      fullName: "Example Runner",
+      position: "RB",
+    });
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          normalized: expect.objectContaining({ type: "ranking", rank: 7 }),
+        }),
+        expect.objectContaining({
+          normalized: expect.objectContaining({ type: "adp", overall: 11.4 }),
+        }),
+      ]),
+    );
+  });
 });

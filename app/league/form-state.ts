@@ -1,7 +1,7 @@
 import type { LeagueConfigurationInput } from "@/domain/league-configuration";
 
 export type LeagueFormState = {
-  status: "idle" | "error";
+  status: "idle" | "success" | "error";
   message?: string;
   fieldErrors?: Partial<Record<keyof LeagueConfigurationInput, string[]>>;
 };

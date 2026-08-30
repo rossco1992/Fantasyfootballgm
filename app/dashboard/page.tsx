@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { logoutAction } from "@/app/auth/actions";
 import { FantasyDataPanel } from "@/components/data/fantasy-data-panel";
 import { LeagueConfigurationForm } from "@/components/league/league-configuration-form";
@@ -45,14 +47,24 @@ export default async function DashboardPage({
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">Dashboard</h1>
         </div>
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-          >
-            Sign out
-          </button>
-        </form>
+        <div className="flex flex-wrap gap-2">
+          {configuration ? (
+            <Link
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              href="/draft"
+            >
+              Open draft room
+            </Link>
+          ) : null}
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
       </header>
 
       {params.message ? (
@@ -80,46 +92,6 @@ export default async function DashboardPage({
 
       {configuration ? (
         <>
-          <section className="rounded-2xl bg-emerald-950 p-6 text-white shadow-sm sm:p-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-emerald-300">
-                  Step 1 complete
-                </p>
-                <h2 className="mt-2 text-3xl font-bold tracking-tight">
-                  {configuration.name}
-                </h2>
-                <p className="mt-2 text-sm text-emerald-100">
-                  Your league rules are saved. Add roster and keeper context to
-                  prepare personalized draft tools.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {[
-                  ["Teams", configuration.teamCount],
-                  ["Scoring", configuration.scoringPreset.replace("_", "-")],
-                  ["Draft slot", configuration.draftPosition],
-                  [
-                    "Keepers",
-                    configuration.leagueFormat === "keeper"
-                      ? `${configuration.maxKeepersPerTeam} max`
-                      : "None",
-                  ],
-                ].map(([label, value]) => (
-                  <div
-                    className="rounded-xl bg-white/10 px-4 py-3 backdrop-blur"
-                    key={label}
-                  >
-                    <p className="text-xs text-emerald-200">{label}</p>
-                    <p className="mt-1 text-sm font-semibold capitalize">
-                      {value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
           <RosterSetupPanel
             assignments={assignments}
             keeperLeague={configuration.leagueFormat === "keeper"}
@@ -128,10 +100,25 @@ export default async function DashboardPage({
           />
 
           <details className="rounded-2xl border border-neutral-200 bg-neutral-50 p-6 dark:border-neutral-800 dark:bg-neutral-900">
-            <summary className="cursor-pointer text-lg font-semibold">
-              Edit league settings
+            <summary className="cursor-pointer text-sm font-semibold text-neutral-600 dark:text-neutral-300">
+              League settings
             </summary>
-            <div className="mt-8">
+            <div className="mt-6 border-b border-neutral-200 pb-6 dark:border-neutral-800">
+              <h2 className="text-xl font-bold tracking-tight">
+                {configuration.name}
+              </h2>
+              <p className="mt-2 text-sm text-neutral-600 capitalize dark:text-neutral-300">
+                {configuration.teamCount} teams ·{" "}
+                {configuration.scoringPreset.replace("_", "-")} · Draft slot{" "}
+                {configuration.draftPosition} ·{" "}
+                {configuration.leagueFormat === "keeper"
+                  ? `${configuration.maxKeepersPerTeam} keeper${
+                      configuration.maxKeepersPerTeam === 1 ? "" : "s"
+                    } max`
+                  : "No keepers"}
+              </p>
+            </div>
+            <div className="mt-6">
               <LeagueConfigurationForm
                 initialConfiguration={initialConfiguration}
                 isEditing

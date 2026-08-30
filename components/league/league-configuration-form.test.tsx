@@ -7,6 +7,9 @@ import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 vi.mock("@/app/league/actions", () => ({
   saveLeagueConfigurationAction: vi.fn(),
 }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 describe("LeagueConfigurationForm", () => {
   it("captures every required league setting", () => {

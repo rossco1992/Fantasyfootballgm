@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { saveLeagueConfigurationAction } from "@/app/league/actions";
 import { INITIAL_LEAGUE_FORM_STATE } from "@/app/league/form-state";
@@ -43,16 +44,25 @@ export function LeagueConfigurationForm({
     saveLeagueConfigurationAction,
     INITIAL_LEAGUE_FORM_STATE,
   );
+  const router = useRouter();
   const [leagueFormat, setLeagueFormat] = useState(
     initialConfiguration.leagueFormat,
   );
 
+  useEffect(() => {
+    if (state.status === "success") router.refresh();
+  }, [router, state.status]);
+
   return (
     <form action={formAction} className="space-y-8">
-      {state.message ? (
+      {!pending && state.message ? (
         <p
-          role="alert"
-          className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
+          role={state.status === "error" ? "alert" : "status"}
+          className={
+            state.status === "error"
+              ? "rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
+              : "rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+          }
         >
           {state.message}
         </p>
