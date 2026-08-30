@@ -19,10 +19,6 @@
     "db:seed": "tsx db/seed.ts",
     "db:reset": "tsx db/reset.ts",
     "db:new": "supabase migration new",
-    "players:import": "node --env-file=.env.local --import tsx scripts/import-sleeper-player-catalog.ts",
-    "history:backfill": "node --env-file=.env.local --import tsx scripts/backfill-nflverse-history.ts",
-    "yahoo:auth-url": "node --env-file=.env.local --import tsx scripts/yahoo-capability-probe.ts auth-url",
-    "yahoo:validate": "node --env-file=.env.local --import tsx scripts/yahoo-capability-probe.ts probe",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "validate": "npm run lint && npm run typecheck && npm run test"

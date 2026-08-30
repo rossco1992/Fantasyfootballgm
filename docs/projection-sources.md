@@ -1,37 +1,28 @@
-# Projection Sources
+# CSV Data Imports
 
-Fantasy Football GM can ingest FantasyPros and Fantasy Nerds through the common
-provider-adapter pipeline. Each source is optional: an unavailable or
-unconfigured provider does not block the others, and CSV upload is a supported
-no-key fallback.
+Fantasy Football GM accepts fantasy data only through CSV uploads. There are no
+API keys, automatic provider refreshes, scheduled imports, or historical
+backfill controls.
 
-## API setup
+## Upload workflow
 
-Keep credentials server-side in `.env.local` or the deployment environment.
-Never prefix them with `NEXT_PUBLIC_` and never paste them into tickets, commits,
-logs, or chat.
+Use **Upload your CSV files** on the authenticated dashboard:
 
-```dotenv
-FANTASYPROS_API_KEY=""
-FANTASYNERDS_API_KEY=""
-```
+1. Select FantasyPros or Fantasy Nerds as the source.
+2. Choose the season, optional week, and scoring format.
+3. Select one or more `.csv` files.
+4. Choose **Upload CSV files**.
 
-- FantasyPros uses `FANTASYPROS_API_KEY` in the `x-api-key` request header.
-  FantasyPros documents a free sample key and personal production access for
-  HOF members at <https://www.fantasypros.com/api-data/>.
-- Fantasy Nerds uses `FANTASYNERDS_API_KEY` as the provider-required `apikey`
-  query parameter. The adapter removes that credential from stored provenance.
-  Live access requires the provider's separate API plan; current endpoints are
-  documented at <https://api.fantasynerds.com/docs/nfl>.
+A batch accepts up to 20 files, with a limit of 2 MB per file and 4 MB total.
+Each file is imported independently: valid files remain available even when a
+different file in the batch cannot be parsed.
 
-After configuration, use **Refresh projections** on the dashboard. The refresh
-loads every configured provider independently and records per-dataset coverage.
+Each filename has its own immutable snapshot stream. This allows separate
+rankings, ADP, projections, and player-list exports from the same source to
+coexist. Uploading a newer version with the same filename replaces that file's
+active snapshot without deleting its earlier snapshots.
 
-## CSV fallback
-
-Use **Import provider CSV** on the dashboard when a paid API is not configured.
-Select the export's provider, season, optional week, and scoring format. Files
-must use the `.csv` extension and be 2 MB or smaller.
+## Supported columns
 
 Headers are case-insensitive and punctuation is normalized. Common supported
 columns include:
@@ -46,35 +37,19 @@ columns include:
 
 When an export omits a provider player ID, the adapter derives a stable fallback
 from normalized player name and position. Player matching still runs through the
-canonical identity pipeline, and unresolved identities remain visible for
-manual review.
+canonical identity pipeline. Player identities in the latest CSV snapshots
+collectively define the pool available in draft and roster tools.
 
-## Data guarantees and limits
+## Data guarantees
 
-- Raw rows and normalized records are retained with provider, timestamp,
-  adapter version, source URL, and freshness metadata.
-- API datasets cover available rankings/ECR, ADP, projections, injuries, and
-  news. CSV coverage depends on columns present in the export and does not
-  synthesize missing fields.
-- HTTP errors, unavailable datasets, and partial coverage remain explicit.
-- A successful HTTP response containing no recognized records is treated as a
-  failed refresh, preserving the last valid snapshot.
-- Provider data is for the configured account's permitted personal use and is
-  not redistributed by the app.
+- Raw rows and normalized records are retained with source, timestamp, adapter
+  version, filename, and freshness metadata.
+- CSV coverage depends on the columns present; missing fields are not invented.
+- Existing immutable snapshots from older integrations remain in the database
+  for compatibility but cannot be refreshed from the product.
+- Consensus values remain separate from raw observations and keep the exact
+  source snapshots used in each calculation.
 
-## Consensus and uncertainty
-
-Consensus projections are derived records; they never replace provider data.
-For each league and season/week scope the app:
-
-1. selects the newest API or CSV delivery from each provider family;
-2. recalculates normalized stat lines under the league scoring preset when a
-   scorable stat line is available;
-3. applies a versioned weighting configuration;
-4. averages highly correlated expert-consensus feeds as one source group; and
-5. stores the consensus, provider range, standard deviation, confidence, and
-   exact contributing snapshots.
-
-Later outcomes create separate provider and consensus error records. Summaries
-can inform a new future weighting version by position and horizon, but never
-rewrite an existing projection snapshot.
+For consensus, files from the same named source are treated as one correlated
+provider family. The freshest usable projection per player and provider family
+is selected before league scoring and uncertainty are calculated.

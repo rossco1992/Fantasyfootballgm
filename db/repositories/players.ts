@@ -27,8 +27,6 @@ const PLAYER_COLUMNS = `id, full_name, position, nfl_team, bye_week, status,
   created_at, updated_at`;
 const QUALIFIED_PLAYER_COLUMNS = `p.id, p.full_name, p.position, p.nfl_team,
   p.bye_week, p.status, p.created_at, p.updated_at`;
-const DRAFTABLE_CATALOG_PROVIDER = "sleeper-player-catalog";
-
 const LATEST_CATALOG_MEMBERSHIP_SQL = `exists (
   select 1
     from provider_player_identity_records identity_record
@@ -37,7 +35,10 @@ const LATEST_CATALOG_MEMBERSHIP_SQL = `exists (
     join providers catalog_provider
       on catalog_provider.id = ingestion_state.provider_id
    where identity_record.player_id = players.id
-     and catalog_provider.slug = $1
+     and (
+       catalog_provider.slug like 'fantasypros-csv%'
+       or catalog_provider.slug like 'fantasynerds-csv%'
+     )
 )`;
 
 function mapPlayer(row: Player): CanonicalPlayer {
@@ -68,7 +69,6 @@ export async function countDraftablePlayers(): Promise<number> {
        from players
       where status not in ('inactive', 'retired')
         and ${LATEST_CATALOG_MEMBERSHIP_SQL}`,
-    [DRAFTABLE_CATALOG_PROVIDER],
   );
   return result.rows[0]?.count ?? 0;
 }
@@ -82,8 +82,8 @@ export async function searchDraftablePlayers(
        from players
       where status not in ('inactive', 'retired')
         and ${LATEST_CATALOG_MEMBERSHIP_SQL}
-        and ($2::text = '' or full_name ilike '%' || $2 || '%')
-        and ($3::text is null or position = $3)
+        and ($1::text = '' or full_name ilike '%' || $1 || '%')
+        and ($2::text is null or position = $2)
       order by
         case position
           when 'QB' then 1
@@ -94,13 +94,8 @@ export async function searchDraftablePlayers(
           when 'DST' then 6
         end,
         full_name
-      limit $4`,
-    [
-      DRAFTABLE_CATALOG_PROVIDER,
-      filters.search,
-      filters.position,
-      filters.limit,
-    ],
+      limit $3`,
+    [filters.search, filters.position, filters.limit],
   );
   return result.rows.map((row) => mapPlayer(playerSchema.parse(row)));
 }

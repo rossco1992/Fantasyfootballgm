@@ -1,18 +1,16 @@
 # providers/
 
-External data-provider adapters.
+CSV data adapters.
 
 Per **ADR-003 — Provider Adapter Boundary**, every external fantasy-data source
-(CSV or API) is integrated through an adapter that converts provider-specific
-payloads into **normalized internal contracts** before persistence or ranking
-logic consumes them.
+Each uploaded fantasy-data file is processed by an adapter that converts its
+provider-specific columns into **normalized internal contracts** before
+persistence or ranking logic consumes them.
 
 Adapters own:
 
-- API/CSV parsing
+- CSV parsing
 - Provider-specific IDs (mapped to the canonical player — see **ADR-002**)
-- Authentication and credentials (server-side only)
-- Pagination and rate-limit handling
 - Mapping into normalized DTOs
 
 Domain services and UI must **not** depend directly on provider SDKs or raw
@@ -44,16 +42,6 @@ Provider adapters do not write to Postgres. They hand candidates to
 `services/provider-ingestion.ts`, which owns lifecycle, idempotency, and
 persistence orchestration.
 
-`nflverse/` supplies weekly roster identities, historical stats, play-level
-participation, and schedules. `sleeper/` supplies attributed add/drop market
-activity. Their source behavior and coverage rules are documented in
-[`docs/historical-context.md`](../docs/historical-context.md).
-
-`fantasypros/` and `fantasynerds/` normalize paid API responses. `manual/`
-normalizes user-supplied exports from either provider when an API key is not
-available. Setup, supported fields, and entitlement limits are documented in
+`manual/` normalizes user-supplied FantasyPros and Fantasy Nerds exports.
+Setup, supported fields, and import limits are documented in
 [`docs/projection-sources.md`](../docs/projection-sources.md).
-
-`yahoo/` contains the historical NOC-52 validation harness only. It is not part
-of the active product path, does not normalize or persist league state, and no
-production Yahoo integration is planned.

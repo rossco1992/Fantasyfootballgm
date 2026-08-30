@@ -59,7 +59,7 @@ in [`docs/player-identity.md`](../docs/player-identity.md).
 Migration `0004_provider_ingestion_pipeline.sql` adds the append-only ingestion
 model used by every fantasy-data adapter:
 
-- `provider_ingestion_runs` — scheduled/on-demand attempts and counts
+- `provider_ingestion_runs` — import attempts and counts
 - `provider_data_snapshots` — immutable, fingerprinted provider deliveries
 - `provider_data_records` — raw and normalized values stored side by side
 - `provider_ingestion_rejections` — quarantined record-level validation errors

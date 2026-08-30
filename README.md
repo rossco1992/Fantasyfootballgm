@@ -2,9 +2,8 @@
 
 A deterministic, data-grounded fantasy football assistant for draft, waiver, and
 lineup decisions. The current foundation includes authentication, one-league
-configuration, canonical player identity, and a provider-neutral fantasy-data
-ingestion pipeline with nflverse history/schedules, an attributed Sleeper player
-catalog, and attributed Sleeper market trends.
+configuration, canonical player identity, and a CSV-only fantasy-data ingestion
+pipeline for uploaded player lists, rankings, ADP, and projections.
 
 ## Tech stack
 
@@ -57,8 +56,7 @@ runtime by [`lib/env.ts`](./lib/env.ts) using Zod.
 - Variables prefixed **`NEXT_PUBLIC_`** are embedded in the browser bundle and
   are therefore **public**. Only non-secret, publishable values belong here.
 - All other variables are **server-only** and must never reach the browser.
-  They are used for privileged operations (service-role DB access, provider
-  credentials).
+  They are used for privileged operations such as service-role DB access.
 - Read configuration through `lib/env.ts` (`getPublicEnv()` / `getServerEnv()`)
   rather than reading `process.env` directly. Missing or malformed values fail
   fast with a descriptive error naming the offending variable.
@@ -75,8 +73,6 @@ runtime by [`lib/env.ts`](./lib/env.ts) using Zod.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public      | Supabase publishable anon key             |
 | `SUPABASE_SERVICE_ROLE_KEY`     | Server-only | Privileged Supabase key (server use only) |
 | `DATABASE_URL`                  | Server-only | Postgres migrations and persistence       |
-| `FANTASYPROS_API_KEY`           | Server-only | Optional FantasyPros personal API access  |
-| `FANTASYNERDS_API_KEY`          | Server-only | Optional Fantasy Nerds developer API key  |
 
 ## Authentication
 
@@ -115,23 +111,22 @@ integrations, and persistence separate.
 
 ## Scripts
 
-| Command                          | Description                                  |
-| -------------------------------- | -------------------------------------------- |
-| `npm run dev`                    | Start the development server                 |
-| `npm run build`                  | Production build                             |
-| `npm run start`                  | Serve the production build                   |
-| `npm run lint`                   | ESLint (Next.js + TypeScript rules)          |
-| `npm run typecheck`              | TypeScript type checking (`tsc --noEmit`)    |
-| `npm run test`                   | Run unit/service tests once (Vitest)         |
-| `npm run test:watch`             | Vitest in watch mode                         |
-| `npm run test:e2e`               | Playwright end-to-end tests                  |
-| `npm run db:migrate`             | Apply pending database migrations            |
-| `npm run db:seed`                | Load development seed data (idempotent)      |
-| `npm run db:reset`               | Drop schema, re-migrate, re-seed (dev only)  |
-| `npm run players:import -- 2026` | Refresh the current NFL player catalog       |
-| `npm run format`                 | Format with Prettier                         |
-| `npm run format:check`           | Check formatting without writing             |
-| `npm run validate`               | `lint` + `typecheck` + `test` (quality gate) |
+| Command                | Description                                  |
+| ---------------------- | -------------------------------------------- |
+| `npm run dev`          | Start the development server                 |
+| `npm run build`        | Production build                             |
+| `npm run start`        | Serve the production build                   |
+| `npm run lint`         | ESLint (Next.js + TypeScript rules)          |
+| `npm run typecheck`    | TypeScript type checking (`tsc --noEmit`)    |
+| `npm run test`         | Run unit/service tests once (Vitest)         |
+| `npm run test:watch`   | Vitest in watch mode                         |
+| `npm run test:e2e`     | Playwright end-to-end tests                  |
+| `npm run db:migrate`   | Apply pending database migrations            |
+| `npm run db:seed`      | Load development seed data (idempotent)      |
+| `npm run db:reset`     | Drop schema, re-migrate, re-seed (dev only)  |
+| `npm run format`       | Format with Prettier                         |
+| `npm run format:check` | Check formatting without writing             |
+| `npm run validate`     | `lint` + `typecheck` + `test` (quality gate) |
 
 ### End-to-end tests
 
@@ -150,31 +145,15 @@ The app uses **Supabase Postgres**. The persistence layer lives in
 [`db/README.md`](./db/README.md) for the layer's structure and the canonical
 data model.
 
-Provider ingestion is append-only: scheduled and on-demand attempts preserve
+Provider ingestion is append-only: CSV import attempts preserve
 raw values, validated normalized records, adapter version, timestamps, and
 provenance. See [`providers/README.md`](./providers/README.md) for the adapter
 contract and [`services/README.md`](./services/README.md) for orchestration.
-Historical-source behavior and attribution are documented in
-[`docs/historical-context.md`](./docs/historical-context.md).
 
-The draftable player catalog uses Sleeper's public NFL Players API as a
-personal-MVP identity source. It refreshes at most once daily, preserves the
-last successful snapshot, and intentionally contains no rankings, ADP, or
-projections. Sleeper documents its API for non-commercial use; commercial use
-requires separate permission. Run the on-demand import after migrations:
-
-```bash
-npm run players:import -- 2026
-```
-
-Projection sources are optional and independent. Configure any entitled paid
-API server-side, or upload a FantasyPros/Fantasy Nerds CSV from the dashboard.
-Missing one provider never blocks the other sources or the CSV path. See
-[`docs/projection-sources.md`](./docs/projection-sources.md).
-
-The repository retains the NOC-52 Yahoo capability probe as historical tooling,
-but Yahoo is not part of the active product path and no production integration
-is planned.
+Upload one or more FantasyPros or Fantasy Nerds CSV files from the dashboard.
+The uploaded player identities define the draftable pool, and recognized
+ranking, ADP, projection, injury, and status columns feed the recommendation
+pipeline. See [`docs/projection-sources.md`](./docs/projection-sources.md).
 
 ### Local/development setup
 

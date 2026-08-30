@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   ProviderDescriptor,
   ProviderIngestionRequest,
@@ -58,10 +60,19 @@ function positiveInteger(row: CsvRow, ...keys: string[]): number | null {
   return value !== null && Number.isInteger(value) && value > 0 ? value : null;
 }
 
-function descriptor(provider: ManualProjectionProvider): ProviderDescriptor {
+function descriptor(
+  provider: ManualProjectionProvider,
+  fileName: string,
+): ProviderDescriptor {
+  const fileKey = createHash("sha256")
+    .update(fileName.trim().toLowerCase())
+    .digest("hex")
+    .slice(0, 12);
+  const providerName =
+    provider === "fantasypros" ? "FantasyPros" : "Fantasy Nerds";
   return {
-    slug: `${provider}-csv`,
-    name: provider === "fantasypros" ? "FantasyPros CSV" : "Fantasy Nerds CSV",
+    slug: `${provider}-csv-${fileKey}`,
+    name: `${providerName} CSV · ${fileName}`.slice(0, 120),
     adapterVersion: "1.0.0",
     staleAfterSeconds: 86_400,
   };
@@ -247,7 +258,7 @@ export class ManualProjectionCsvAdapter implements FantasyDataProviderAdapter<Ma
     private readonly observedAt: string,
     private readonly scoring: ProjectionScoring,
   ) {
-    this.descriptor = descriptor(provider);
+    this.descriptor = descriptor(provider, fileName);
   }
 
   async fetch(): Promise<ManualProjectionCsvPayload> {

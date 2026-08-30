@@ -156,9 +156,8 @@ async function fail(
 }
 
 /**
- * Run one provider ingestion attempt. The same function backs scheduled and
- * on-demand entry points so validation, idempotency, and failure behavior stay
- * identical.
+ * Run one provider ingestion attempt with validation, idempotency, and
+ * explicit failure behavior.
  */
 export async function ingestProviderData<TRawPayload>(
   adapter: FantasyDataProviderAdapter<TRawPayload>,
@@ -453,18 +452,6 @@ export async function ingestProviderData<TRawPayload>(
           }
         : null,
   };
-}
-
-export function runScheduledProviderIngestion<TRawPayload>(
-  adapter: FantasyDataProviderAdapter<TRawPayload>,
-  scope: Omit<ProviderIngestionRequest, "trigger">,
-  options?: IngestionOptions,
-): Promise<ProviderIngestionOutcome> {
-  return ingestProviderData(
-    adapter,
-    { ...scope, trigger: "scheduled" },
-    options,
-  );
 }
 
 export function runOnDemandProviderIngestion<TRawPayload>(

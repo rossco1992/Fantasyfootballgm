@@ -21,7 +21,7 @@ follow when implementing them.
   the same round as the prior year's draft round. Waiver/free-agent cost stays
   configurable until the league rule is confirmed.
 - Use a platform-independent domain model and provider adapters.
-- Provide manual fallbacks when an upstream source is unavailable.
+- Accept fantasy data only through user-uploaded CSV files in the MVP.
 - Do not build multi-league support, auctions, trades, write-back, public
   onboarding, billing, or commercial licensing in this MVP.
 
@@ -47,8 +47,8 @@ follow when implementing them.
    added or replaced without rewriting the product.
 5. Preserve raw provider values and immutable snapshots; compute consensus and
    personalized outputs separately.
-6. Prefer server-side access for secrets, provider credentials, ranking
-   calculations, and privileged database operations.
+6. Prefer server-side access for secrets, ranking calculations, CSV parsing,
+   and privileged database operations.
 7. Use migrations for schema changes. Do not rely on manual production database
    edits.
 8. Keep domain logic separate from UI components.
@@ -58,8 +58,8 @@ follow when implementing them.
 ## Data Flow
 
 ```
-Manual league state + projection, market, and historical sources + CSV fallback
-  → Provider Adapters
+Manual league state + uploaded CSV files
+  → CSV Adapter
   → Validation + Player Identity Matching
   → Raw Immutable Source Snapshots
   → Normalized Canonical Fantasy Data
@@ -71,12 +71,11 @@ Manual league state + projection, market, and historical sources + CSV fallback
 
 ## Initial Data Strategy
 
-- Use FantasyPros and FantasyNerds when the user's developer/API entitlements
-  are confirmed.
-- Use nflverse for reproducible history and supported market-trend sources as
-  supplemental context.
-- Keep CSV as a supported manual fallback when a paid provider API is not
-  configured.
+- Use FantasyPros and Fantasy Nerds CSV exports as the only fantasy-data input.
+- Allow multiple files in one upload so separate player, ranking, ADP, and
+  projection exports can be combined.
+- Treat identities in the latest uploaded CSV snapshots as the draftable player
+  pool.
 - Maintain a canonical internal player ID.
 - Store external provider IDs separately.
 - Store raw value, normalized value, provider, season/week, observed-at,
@@ -84,8 +83,8 @@ Manual league state + projection, market, and historical sources + CSV fallback
 - Do not collapse source data destructively. Consensus values are separate from
   raw observations.
 - Snapshot predictions before outcomes so source accuracy can be evaluated.
-- Continue serving the last valid snapshot during provider failures and mark it
-  stale visibly.
+- Keep existing immutable provider history for compatibility, but expose no
+  live provider refresh, credential, scheduled import, or backfill workflow.
 
 ## Decision-Engine Boundaries
 
