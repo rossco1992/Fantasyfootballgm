@@ -48,6 +48,7 @@ export function FantasyDataPanel({
               >
                 <option value="fantasypros">FantasyPros</option>
                 <option value="fantasynerds">Fantasy Nerds</option>
+                <option value="yahoo">Yahoo</option>
               </select>
             </label>
             <label className="grid gap-1 text-sm">

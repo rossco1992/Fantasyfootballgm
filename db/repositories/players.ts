@@ -39,6 +39,7 @@ const LATEST_CATALOG_MEMBERSHIP_SQL = `exists (
        catalog_provider.slug = 'fantasypros'
        or catalog_provider.slug like 'fantasypros-csv%'
        or catalog_provider.slug like 'fantasynerds-csv%'
+       or catalog_provider.slug like 'yahoo-csv%'
      )
 )`;
 

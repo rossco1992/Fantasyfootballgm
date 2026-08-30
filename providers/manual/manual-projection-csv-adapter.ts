@@ -19,6 +19,7 @@ import type { FantasyDataProviderAdapter } from "@/providers/types";
 export const MANUAL_PROJECTION_PROVIDERS = [
   "fantasypros",
   "fantasynerds",
+  "yahoo",
 ] as const;
 
 export type ManualProjectionProvider =
@@ -69,7 +70,11 @@ function descriptor(
     .digest("hex")
     .slice(0, 12);
   const providerName =
-    provider === "fantasypros" ? "FantasyPros" : "Fantasy Nerds";
+    provider === "fantasypros"
+      ? "FantasyPros"
+      : provider === "fantasynerds"
+        ? "Fantasy Nerds"
+        : "Yahoo";
   return {
     slug: `${provider}-csv-${fileKey}`,
     name: `${providerName} CSV · ${fileName}`.slice(0, 120),
@@ -79,9 +84,9 @@ function descriptor(
 }
 
 function providerHome(provider: ManualProjectionProvider): string {
-  return provider === "fantasypros"
-    ? "https://www.fantasypros.com/"
-    : "https://www.fantasynerds.com/";
+  if (provider === "fantasypros") return "https://www.fantasypros.com/";
+  if (provider === "fantasynerds") return "https://www.fantasynerds.com/";
+  return "https://football.fantasysports.yahoo.com/";
 }
 
 function externalId(
@@ -92,7 +97,11 @@ function externalId(
     row,
     "player_id",
     "playerid",
-    provider === "fantasypros" ? "fantasypros_id" : "fantasynerds_id",
+    provider === "fantasypros"
+      ? "fantasypros_id"
+      : provider === "fantasynerds"
+        ? "fantasynerds_id"
+        : "yahoo_id",
   );
   if (direct) return direct;
   const name = field(row, "player_name", "player", "name");
@@ -176,7 +185,17 @@ function records(
     const id = externalId(provider, row);
     if (!id) return [];
     const result: ProviderRecordCandidate[] = [];
-    const rank = numeric(row, "ecr", "rank", "rk", "overall_rank");
+    const rank = numeric(
+      row,
+      "ecr",
+      "rank",
+      "rk",
+      "overall_rank",
+      "o_rank",
+      "orank",
+      "pre_season",
+      "current",
+    );
     if (rank !== null && rank > 0) {
       result.push({
         recordKey: "ranking",
@@ -191,7 +210,7 @@ function records(
         raw: row,
       });
     }
-    const adp = numeric(row, "adp", "average_draft_position");
+    const adp = numeric(row, "adp", "average_draft_position", "average_pick");
     if (adp !== null && adp > 0) {
       result.push({
         recordKey: "adp",
