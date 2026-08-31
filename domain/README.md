@@ -26,3 +26,9 @@ they enter the canonical persistence layer.
 league preset, blends configurable provider weights, caps correlated source
 groups to one vote, and returns range, standard deviation, confidence, and
 traceable component factors. It contains no database or provider I/O.
+
+`draft-recommendation.ts` ranks the active draft pool with a versioned,
+deterministic blend of league-adjusted value, positional scarcity, next-pick
+availability risk, roster fit, projection confidence, and injury penalties.
+Every result includes the component scores and human-readable reasons used by
+the draft-room UI.

@@ -18,10 +18,12 @@ import {
   type DraftSession,
   draftPickCoordinates,
 } from "@/domain/draft";
+import type { DraftAssistantResult } from "@/domain/draft-recommendation";
 import type { LeagueConfiguration } from "@/domain/league-configuration";
 import type { RosterAssignment } from "@/domain/roster";
 import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
 import { retrieveManualRoster } from "@/services/roster-setup";
+import { loadDraftAssistant } from "@/services/draft-recommendations";
 
 export class DraftRoomError extends Error {}
 
@@ -33,6 +35,7 @@ export type DraftRoom = {
   picks: DraftPick[];
   queue: DraftQueueEntry[];
   keepers: RosterAssignment[];
+  assistant: DraftAssistantResult | null;
 };
 
 async function ownedLeague(
@@ -51,7 +54,7 @@ export async function loadDraftRoom(
   const league = await ownedLeague(userId, leagueId);
   const session = await getDraftSessionForLeague(userId, leagueId);
   const [players, keepers] = await Promise.all([
-    listYahooDraftPlayers(),
+    listYahooDraftPlayers(session?.playerPoolSnapshotId ?? null),
     retrieveManualRoster(userId, leagueId),
   ]);
   if (!session) {
@@ -63,6 +66,7 @@ export async function loadDraftRoom(
       picks: [],
       queue: [],
       keepers: keepers.filter((assignment) => assignment.isKeeper),
+      assistant: null,
     };
   }
   const [picks, queue] = await Promise.all([
@@ -70,14 +74,33 @@ export async function loadDraftRoom(
     listDraftQueue(session.id),
   ]);
   const draftedIds = new Set(picks.map((pick) => pick.playerId));
+  const keeperAssignments = keepers.filter((assignment) => assignment.isKeeper);
+  const keeperIds = new Set(keeperAssignments.map((keeper) => keeper.playerId));
+  const activePlayerIds = new Set(players.map((player) => player.id));
+  const availablePlayers = players.filter(
+    (player) => !draftedIds.has(player.id) && !keeperIds.has(player.id),
+  );
+  const assistant = await loadDraftAssistant({
+    league,
+    session,
+    availablePlayers,
+    picks,
+    keepers: keeperAssignments,
+  });
   return {
     league,
     session,
     players,
-    availablePlayers: players.filter((player) => !draftedIds.has(player.id)),
+    availablePlayers,
     picks,
-    queue: queue.filter((entry) => !draftedIds.has(entry.id)),
-    keepers: keepers.filter((assignment) => assignment.isKeeper),
+    queue: queue.filter(
+      (entry) =>
+        activePlayerIds.has(entry.id) &&
+        !draftedIds.has(entry.id) &&
+        !keeperIds.has(entry.id),
+    ),
+    keepers: keeperAssignments,
+    assistant,
   };
 }
 
@@ -85,9 +108,10 @@ export async function startDraftRoom(
   userId: string,
   leagueId: string,
   season: number,
+  playerPoolSnapshotId: string | null = null,
 ): Promise<DraftSession> {
   await ownedLeague(userId, leagueId);
-  return upsertDraftSession(userId, leagueId, season);
+  return upsertDraftSession(userId, leagueId, season, playerPoolSnapshotId);
 }
 
 export async function renameDraftTeams(
@@ -120,7 +144,7 @@ export async function recordNextDraftPick(input: {
   const session = await getDraftSessionForLeague(input.userId, input.leagueId);
   if (!session) throw new DraftRoomError("Upload Yahoo players first.");
   const [players, picks] = await Promise.all([
-    listYahooDraftPlayers(),
+    listYahooDraftPlayers(session.playerPoolSnapshotId),
     listDraftPicks(session.id),
   ]);
   if (!players.some((player) => player.id === input.playerId)) {
@@ -128,6 +152,13 @@ export async function recordNextDraftPick(input: {
   }
   if (picks.some((pick) => pick.playerId === input.playerId)) {
     throw new DraftRoomError("That player has already been drafted.");
+  }
+  const rounds = Object.values(league.rosterSlots).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  if (picks.length >= rounds * league.teamCount) {
+    throw new DraftRoomError("The draft is complete.");
   }
   const coordinates = draftPickCoordinates(
     picks.length + 1,

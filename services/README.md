@@ -33,3 +33,9 @@ UI logic as canonical identities.
 applies the versioned deterministic blend, persists an immutable consensus
 snapshot, and evaluates frozen provider/consensus predictions against later
 outcomes. Replaying identical inputs produces the same fingerprint.
+
+`draft-recommendations.ts` joins the exact Yahoo snapshot selected for the live
+draft with the latest league-scored consensus projection, the user's live
+roster, keeper context, and snake-draft turn order before calling the pure
+domain ranking engine. If projections are unavailable it explicitly returns a
+market-only Yahoo fallback rather than inventing values.

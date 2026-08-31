@@ -356,6 +356,28 @@ export async function getConsensusSnapshot(
   return mapSnapshot(snapshot, await loadEntries({ query }, snapshot.id));
 }
 
+export async function getLatestConsensusSnapshotForLeague(input: {
+  leagueConfigurationId: string;
+  season: number;
+  week: number | null;
+  horizon: ProjectionHorizon;
+}): Promise<PersistedConsensusSnapshot | null> {
+  const result = await query<ConsensusSnapshotRow>(
+    `select ${SNAPSHOT_COLUMNS}
+       from projection_consensus_snapshots
+      where league_configuration_id = $1
+        and season = $2
+        and week is not distinct from $3
+        and horizon = $4
+      order by generated_at desc, created_at desc
+      limit 1`,
+    [input.leagueConfigurationId, input.season, input.week, input.horizon],
+  );
+  const snapshot = result.rows[0];
+  if (!snapshot) return null;
+  return mapSnapshot(snapshot, await loadEntries({ query }, snapshot.id));
+}
+
 export async function persistProjectionOutcomeEvaluation(
   input: ProjectionOutcomeEvaluationInput,
 ): Promise<void> {

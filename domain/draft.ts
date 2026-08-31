@@ -10,6 +10,7 @@ export const draftSessionSchema = z.object({
   season: z.number().int().min(2000).max(2100),
   status: z.enum(DRAFT_SESSION_STATUSES),
   teamNames: z.record(z.string(), z.string()),
+  playerPoolSnapshotId: z.string().uuid().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

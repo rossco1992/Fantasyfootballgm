@@ -10,6 +10,8 @@ import {
   MAX_CSV_TOTAL_BYTES,
   importCsvBatch,
 } from "@/services/csv-import";
+import { retrieveLeagueConfiguration } from "@/services/league-configurations";
+import { generateProjectionConsensus } from "@/services/projection-consensus";
 
 class CsvUploadError extends Error {}
 
@@ -55,15 +57,18 @@ function uploadedFiles(formData: FormData): File[] {
 }
 
 export async function importCsvFilesAction(formData: FormData): Promise<never> {
-  await requireAuthenticatedUser();
+  const user = await requireAuthenticatedUser();
+  const provider = String(formData.get("provider") ?? "");
+  const season = integer(formData, "season");
+  const week = optionalWeek(formData);
   let result: Awaited<ReturnType<typeof importCsvBatch>>;
   try {
     const files = uploadedFiles(formData);
     const observedAt = new Date().toISOString();
     result = await importCsvBatch({
-      provider: String(formData.get("provider") ?? ""),
-      season: integer(formData, "season"),
-      week: optionalWeek(formData),
+      provider,
+      season,
+      week,
       scoring: scoring(formData),
       files: await Promise.all(
         files.map(async (file) => ({
@@ -94,6 +99,21 @@ export async function importCsvFilesAction(formData: FormData): Promise<never> {
     (total, file) => total + file.outcome.recordsImported,
     0,
   );
+  if (provider === "fantasypros" || provider === "fantasynerds") {
+    const league = await retrieveLeagueConfiguration(user.id);
+    if (league) {
+      try {
+        await generateProjectionConsensus({
+          leagueId: league.id,
+          userId: user.id,
+          season,
+          week,
+        });
+      } catch {
+        // Ranking-only CSVs still import successfully without projections.
+      }
+    }
+  }
   revalidatePath("/dashboard");
   const failureSummary =
     failed.length > 0
