@@ -246,6 +246,10 @@ export async function deleteLastDraftPick(sessionId: string): Promise<void> {
   );
 }
 
+export async function deleteAllDraftPicks(sessionId: string): Promise<void> {
+  await query(`delete from draft_picks where session_id = $1`, [sessionId]);
+}
+
 export async function listDraftQueue(
   sessionId: string,
 ): Promise<DraftQueueEntry[]> {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  deleteAllDraftPicks,
   getDraftSessionForLeague,
   insertDraftPick,
   listDraftPicks,
@@ -8,11 +9,16 @@ import {
   updateDraftTeamNames,
 } from "@/db/repositories/draft";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
-import { recordNextDraftPick, renameDraftTeams } from "@/services/draft";
+import {
+  clearDraftBoard,
+  recordNextDraftPick,
+  renameDraftTeams,
+} from "@/services/draft";
 import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
 
 vi.mock("@/db/repositories/draft", () => ({
   addDraftQueueEntry: vi.fn(),
+  deleteAllDraftPicks: vi.fn(),
   deleteLastDraftPick: vi.fn(),
   getDraftSessionForLeague: vi.fn(),
   insertDraftPick: vi.fn(),
@@ -139,5 +145,11 @@ describe("live draft service", () => {
       renameDraftTeams(userId, leagueId, { "1": "My Team" }),
     ).rejects.toThrow("Team 2 needs a name");
     expect(updateDraftTeamNames).not.toHaveBeenCalled();
+  });
+
+  it("clears every recorded pick without changing other draft state", async () => {
+    await clearDraftBoard(userId, leagueId);
+
+    expect(deleteAllDraftPicks).toHaveBeenCalledWith(sessionId);
   });
 });
