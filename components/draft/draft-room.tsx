@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import {
+  clearDraftBoardAction,
   queueDraftPlayerAction,
   recordDraftPickAction,
   renameDraftTeamsAction,
@@ -8,6 +9,7 @@ import {
   unqueueDraftPlayerAction,
   uploadYahooPlayersAction,
 } from "@/app/draft/actions";
+import { ClearDraftButton } from "@/components/draft/clear-draft-button";
 import { DraftUploadForm } from "@/components/draft/draft-upload-form";
 import type { DraftPick, DraftPlayer } from "@/domain/draft";
 import type { DraftRoom } from "@/services/draft";
@@ -124,15 +126,21 @@ function Board({ room }: { room: DraftRoom }) {
             </div>
           </details>
           {room.picks.length ? (
-            <form action={undoDraftPickAction}>
-              <input name="leagueId" type="hidden" value={room.league.id} />
-              <button
-                className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-                type="submit"
-              >
-                Undo last pick
-              </button>
-            </form>
+            <>
+              <form action={undoDraftPickAction}>
+                <input name="leagueId" type="hidden" value={room.league.id} />
+                <button
+                  className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+                  type="submit"
+                >
+                  Undo last pick
+                </button>
+              </form>
+              <ClearDraftButton
+                action={clearDraftBoardAction}
+                leagueId={room.league.id}
+              />
+            </>
           ) : null}
         </div>
       </div>

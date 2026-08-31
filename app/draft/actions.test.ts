@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  clearDraftBoardAction,
   renameDraftTeamsAction,
   uploadYahooPlayersAction,
 } from "@/app/draft/actions";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { importCsvBatch } from "@/services/csv-import";
-import { renameDraftTeams, startDraftRoom } from "@/services/draft";
+import {
+  clearDraftBoard,
+  renameDraftTeams,
+  startDraftRoom,
+} from "@/services/draft";
 
 const { redirect, revalidatePath } = vi.hoisted(() => ({
   redirect: vi.fn((path: string) => {
@@ -23,6 +28,7 @@ vi.mock("@/services/csv-import", async (importOriginal) => {
   return { ...actual, importCsvBatch: vi.fn() };
 });
 vi.mock("@/services/draft", () => ({
+  clearDraftBoard: vi.fn(),
   queueDraftPlayer: vi.fn(),
   recordNextDraftPick: vi.fn(),
   renameDraftTeams: vi.fn(),
@@ -123,6 +129,20 @@ describe("Yahoo draft upload action", () => {
       user.id,
       "44444444-4444-4444-8444-444444444444",
       { "1": "My Team", "2": "The Rivals" },
+    );
+    expect(revalidatePath).toHaveBeenCalledWith("/draft");
+  });
+
+  it("clears the draft board", async () => {
+    const data = new FormData();
+    data.set("leagueId", "44444444-4444-4444-8444-444444444444");
+
+    await expect(clearDraftBoardAction(data)).rejects.toThrow(
+      "REDIRECT:/draft?tab=available&message=Draft%20board%20cleared.",
+    );
+    expect(clearDraftBoard).toHaveBeenCalledWith(
+      user.id,
+      "44444444-4444-4444-8444-444444444444",
     );
     expect(revalidatePath).toHaveBeenCalledWith("/draft");
   });

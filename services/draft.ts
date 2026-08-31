@@ -1,5 +1,6 @@
 import {
   addDraftQueueEntry,
+  deleteAllDraftPicks,
   deleteLastDraftPick,
   getDraftSessionForLeague,
   insertDraftPick,
@@ -144,6 +145,16 @@ export async function undoLastDraftPick(
   const session = await getDraftSessionForLeague(userId, leagueId);
   if (!session) throw new DraftRoomError("There is no draft to update.");
   await deleteLastDraftPick(session.id);
+}
+
+export async function clearDraftBoard(
+  userId: string,
+  leagueId: string,
+): Promise<void> {
+  await ownedLeague(userId, leagueId);
+  const session = await getDraftSessionForLeague(userId, leagueId);
+  if (!session) throw new DraftRoomError("There is no draft to clear.");
+  await deleteAllDraftPicks(session.id);
 }
 
 export async function queueDraftPlayer(input: {

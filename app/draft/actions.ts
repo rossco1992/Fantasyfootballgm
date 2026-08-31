@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import {
+  clearDraftBoard,
   queueDraftPlayer,
   recordNextDraftPick,
   renameDraftTeams,
@@ -125,6 +126,17 @@ export async function undoDraftPickAction(formData: FormData) {
   await undoLastDraftPick(user.id, String(formData.get("leagueId") ?? ""));
   revalidatePath("/draft");
   redirect(draftUrl("message", "Last pick removed."));
+}
+
+export async function clearDraftBoardAction(formData: FormData) {
+  const user = await requireAuthenticatedUser();
+  try {
+    await clearDraftBoard(user.id, String(formData.get("leagueId") ?? ""));
+  } catch {
+    redirect(draftUrl("error", "The draft board could not be cleared."));
+  }
+  revalidatePath("/draft");
+  redirect(draftUrl("message", "Draft board cleared."));
 }
 
 export async function queueDraftPlayerAction(formData: FormData) {
