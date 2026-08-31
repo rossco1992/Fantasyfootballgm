@@ -16,6 +16,7 @@ type DraftSessionRow = {
   season: number;
   status: "active" | "completed";
   team_names: Record<string, string>;
+  player_pool_snapshot_id: string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -59,6 +60,7 @@ function mapSession(row: DraftSessionRow): DraftSession {
     season: row.season,
     status: row.status,
     teamNames: row.team_names,
+    playerPoolSnapshotId: row.player_pool_snapshot_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -101,7 +103,7 @@ export async function getDraftSessionForLeague(
 ): Promise<DraftSession | null> {
   const result = await query<DraftSessionRow>(
     `select session.id, session.league_id, session.season, session.status,
-            session.team_names,
+            session.team_names, session.player_pool_snapshot_id,
             session.created_at, session.updated_at
        from draft_sessions session
        join league_configurations league on league.id = session.league_id
@@ -115,15 +117,21 @@ export async function upsertDraftSession(
   userId: string,
   leagueId: string,
   season: number,
+  playerPoolSnapshotId: string | null,
 ): Promise<DraftSession> {
   const result = await query<DraftSessionRow>(
-    `insert into draft_sessions (league_id, season)
-     select id, $3 from league_configurations where id = $1 and user_id = $2
+    `insert into draft_sessions (league_id, season, player_pool_snapshot_id)
+     select id, $3, $4 from league_configurations where id = $1 and user_id = $2
      on conflict (league_id) do update set
        season = excluded.season,
+       player_pool_snapshot_id = coalesce(
+         excluded.player_pool_snapshot_id,
+         draft_sessions.player_pool_snapshot_id
+       ),
        updated_at = now()
-     returning id, league_id, season, status, team_names, created_at, updated_at`,
-    [leagueId, userId, season],
+     returning id, league_id, season, status, team_names,
+               player_pool_snapshot_id, created_at, updated_at`,
+    [leagueId, userId, season, playerPoolSnapshotId],
   );
   const row = result.rows[0];
   if (!row) throw new Error("The draft session could not be created.");
@@ -151,7 +159,9 @@ export async function updateDraftTeamNames(
 }
 
 /** Latest user-uploaded Yahoo catalog with its ranking signals. */
-export async function listYahooDraftPlayers(): Promise<DraftPlayer[]> {
+export async function listYahooDraftPlayers(
+  playerPoolSnapshotId: string | null = null,
+): Promise<DraftPlayer[]> {
   const result = await query<DraftPlayerRow>(
     `with latest_yahoo_players as (
        select distinct on (identity.player_id)
@@ -160,9 +170,17 @@ export async function listYahooDraftPlayers(): Promise<DraftPlayer[]> {
               snapshot.observed_at
          from provider_player_identity_records identity
          join provider_data_snapshots snapshot on snapshot.id = identity.snapshot_id
-         join provider_ingestion_state state on state.latest_snapshot_id = snapshot.id
-         join providers provider on provider.id = state.provider_id
+         join providers provider on provider.id = snapshot.provider_id
         where provider.slug like 'yahoo-csv%'
+          and (
+            ($1::uuid is not null and snapshot.id = $1)
+            or (
+              $1::uuid is null and exists (
+                select 1 from provider_ingestion_state state
+                 where state.latest_snapshot_id = snapshot.id
+              )
+            )
+          )
         order by identity.player_id, snapshot.observed_at desc, snapshot.imported_at desc
      )
      select player.id, player.full_name, player.position, player.nfl_team,
@@ -188,6 +206,7 @@ export async function listYahooDraftPlayers(): Promise<DraftPlayer[]> {
        ) adp on true
       where player.status not in ('inactive', 'retired')
       order by coalesce(ranking.yahoo_rank, adp.yahoo_adp, 99999), player.full_name`,
+    [playerPoolSnapshotId],
   );
   return result.rows.map(mapPlayer);
 }

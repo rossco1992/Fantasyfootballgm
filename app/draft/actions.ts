@@ -63,7 +63,8 @@ export async function uploadYahooPlayersAction(
       ),
     );
   }
-  if (result.files[0]?.status !== "imported") {
+  const importedFile = result.files[0];
+  if (importedFile?.status !== "imported") {
     redirect(
       draftUrl(
         "error",
@@ -71,8 +72,17 @@ export async function uploadYahooPlayersAction(
       ),
     );
   }
+  const playerPoolSnapshotId = importedFile.outcome.snapshotId;
+  if (!playerPoolSnapshotId) {
+    redirect(
+      draftUrl(
+        "error",
+        "The Yahoo players imported without a usable draft snapshot. Try the upload again.",
+      ),
+    );
+  }
   try {
-    await startDraftRoom(user.id, leagueId, season);
+    await startDraftRoom(user.id, leagueId, season, playerPoolSnapshotId);
   } catch {
     redirect(
       draftUrl(

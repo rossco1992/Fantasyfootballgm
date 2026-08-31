@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { query, withTransaction } from "@/db/client";
 import {
+  getLatestConsensusSnapshotForLeague,
   listLatestProjectionSources,
   listProjectionAccuracySummary,
   persistConsensusSnapshot,
@@ -184,6 +185,39 @@ describe("projection consensus repository", () => {
     const entryInsert = client.query.mock.calls[1];
     expect(entryInsert?.[0]).toContain("projection_consensus_entries");
     expect(entryInsert?.[1]?.[11]).toContain('"providerSlug":"fantasypros"');
+  });
+
+  it("loads the latest preseason consensus for a league", async () => {
+    vi.mocked(query)
+      .mockResolvedValueOnce({
+        rows: [snapshotRow],
+        rowCount: 1,
+        command: "SELECT",
+        oid: 0,
+        fields: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [entryRow],
+        rowCount: 1,
+        command: "SELECT",
+        oid: 0,
+        fields: [],
+      });
+
+    await expect(
+      getLatestConsensusSnapshotForLeague({
+        leagueConfigurationId: LEAGUE_ID,
+        season: 2026,
+        week: null,
+        horizon: "preseason",
+      }),
+    ).resolves.toMatchObject({
+      id: CONSENSUS_ID,
+      entries: [{ playerId: PLAYER_ID, consensusPoints: 250 }],
+    });
+    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain(
+      "order by generated_at desc",
+    );
   });
 
   it("summarizes immutable errors by position and horizon", async () => {

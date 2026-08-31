@@ -5,16 +5,20 @@ import {
   getDraftSessionForLeague,
   insertDraftPick,
   listDraftPicks,
+  listDraftQueue,
   listYahooDraftPlayers,
   updateDraftTeamNames,
 } from "@/db/repositories/draft";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import {
   clearDraftBoard,
+  loadDraftRoom,
   recordNextDraftPick,
   renameDraftTeams,
 } from "@/services/draft";
 import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
+import { retrieveManualRoster } from "@/services/roster-setup";
+import { loadDraftAssistant } from "@/services/draft-recommendations";
 
 vi.mock("@/db/repositories/draft", () => ({
   addDraftQueueEntry: vi.fn(),
@@ -34,6 +38,9 @@ vi.mock("@/services/league-configurations", () => ({
 }));
 vi.mock("@/services/roster-setup", () => ({
   retrieveManualRoster: vi.fn(),
+}));
+vi.mock("@/services/draft-recommendations", () => ({
+  loadDraftAssistant: vi.fn(),
 }));
 
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -59,6 +66,7 @@ describe("live draft service", () => {
       season: 2026,
       status: "active",
       teamNames: {},
+      playerPoolSnapshotId: null,
       createdAt: new Date("2026-08-30T12:00:00Z"),
       updatedAt: new Date("2026-08-30T12:00:00Z"),
     });
@@ -76,6 +84,15 @@ describe("live draft service", () => {
         updatedAt: new Date("2026-08-30T12:00:00Z"),
       },
     ]);
+    vi.mocked(retrieveManualRoster).mockResolvedValue([]);
+    vi.mocked(loadDraftAssistant).mockResolvedValue({
+      version: "draft-recommendation-v1",
+      dataMode: "market_only",
+      currentOverallPick: 1,
+      nextUserOverallPick: 1,
+      picksUntilUser: 0,
+      recommendations: [],
+    });
   });
 
   it("records the next pick using deterministic snake coordinates", async () => {
@@ -116,6 +133,121 @@ describe("live draft service", () => {
       }),
     ).rejects.toThrow("not in the Yahoo draft pool");
     expect(insertDraftPick).not.toHaveBeenCalled();
+  });
+
+  it("rejects picks after every configured roster slot is filled", async () => {
+    vi.mocked(retrieveLeagueConfigurationById).mockResolvedValue({
+      ...DEFAULT_LEAGUE_CONFIGURATION,
+      id: leagueId,
+      userId,
+      teamCount: 4,
+      rosterSlots: {
+        qb: 1,
+        rb: 0,
+        wr: 0,
+        te: 0,
+        flex: 0,
+        superflex: 0,
+        k: 0,
+        dst: 0,
+        bench: 0,
+      },
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(listDraftPicks).mockResolvedValue(
+      Array.from({ length: 4 }, (_, index) => ({
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        sessionId,
+        playerId: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        fullName: `Player ${index + 1}`,
+        position: "QB",
+        nflTeam: "NYJ",
+        overallPick: index + 1,
+        round: 1,
+        pickInRound: index + 1,
+        fantasyTeamSlot: index + 1,
+        createdAt: new Date("2026-08-30T12:00:00Z"),
+      })),
+    );
+
+    await expect(
+      recordNextDraftPick({ userId, leagueId, playerId }),
+    ).rejects.toThrow("draft is complete");
+    expect(insertDraftPick).not.toHaveBeenCalled();
+  });
+
+  it("binds availability to the session upload and removes keepers", async () => {
+    const keeperId = "55555555-5555-4555-8555-555555555555";
+    const snapshotId = "66666666-6666-4666-8666-666666666666";
+    vi.mocked(getDraftSessionForLeague).mockResolvedValue({
+      id: sessionId,
+      leagueId,
+      season: 2026,
+      status: "active",
+      teamNames: {},
+      playerPoolSnapshotId: snapshotId,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(listYahooDraftPlayers).mockResolvedValue([
+      {
+        id: playerId,
+        fullName: "Available Runner",
+        position: "RB",
+        nflTeam: "SF",
+        byeWeek: 9,
+        status: "active",
+        yahooRank: 1,
+        yahooAdp: 2,
+        createdAt: new Date("2026-08-30T12:00:00Z"),
+        updatedAt: new Date("2026-08-30T12:00:00Z"),
+      },
+      {
+        id: keeperId,
+        fullName: "Keeper Receiver",
+        position: "WR",
+        nflTeam: "DAL",
+        byeWeek: 10,
+        status: "active",
+        yahooRank: 2,
+        yahooAdp: 3,
+        createdAt: new Date("2026-08-30T12:00:00Z"),
+        updatedAt: new Date("2026-08-30T12:00:00Z"),
+      },
+    ]);
+    vi.mocked(listDraftPicks).mockResolvedValue([]);
+    vi.mocked(listDraftQueue).mockResolvedValue([]);
+    vi.mocked(retrieveManualRoster).mockResolvedValue([
+      {
+        id: "77777777-7777-4777-8777-777777777777",
+        leagueId,
+        playerId: keeperId,
+        fullName: "Keeper Receiver",
+        position: "WR",
+        nflTeam: "DAL",
+        playerStatus: "active",
+        fantasyTeamName: "Team 2",
+        acquisitionType: "drafted",
+        isKeeper: true,
+        originalDraftSeason: 2025,
+        originalDraftRound: 4,
+        keeperSeason: 2026,
+        keeperCostRound: 4,
+        createdAt: new Date("2026-08-30T12:00:00Z"),
+        updatedAt: new Date("2026-08-30T12:00:00Z"),
+      },
+    ]);
+
+    const room = await loadDraftRoom(userId, leagueId);
+
+    expect(listYahooDraftPlayers).toHaveBeenCalledWith(snapshotId);
+    expect(room.availablePlayers.map((player) => player.id)).toEqual([
+      playerId,
+    ]);
+    expect(loadDraftAssistant).toHaveBeenCalledWith(
+      expect.objectContaining({ availablePlayers: room.availablePlayers }),
+    );
   });
 
   it("saves trimmed names for every configured team", async () => {

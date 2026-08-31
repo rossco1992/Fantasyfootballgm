@@ -67,6 +67,197 @@ function DraftButton({
   );
 }
 
+function RecommendationAction({
+  room,
+  playerId,
+}: {
+  room: DraftRoom;
+  playerId: string;
+}) {
+  if (room.assistant?.picksUntilUser === 0) {
+    return (
+      <DraftButton
+        leagueId={room.league.id}
+        playerId={playerId}
+        returnTab="available"
+      />
+    );
+  }
+  if (room.queue.some((entry) => entry.id === playerId)) {
+    return (
+      <span className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300">
+        Queued
+      </span>
+    );
+  }
+  return (
+    <form action={queueDraftPlayerAction}>
+      <input name="leagueId" type="hidden" value={room.league.id} />
+      <input name="playerId" type="hidden" value={playerId} />
+      <button
+        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+        type="submit"
+      >
+        Queue
+      </button>
+    </form>
+  );
+}
+
+function RecommendationFactors({
+  factors,
+}: {
+  factors: NonNullable<
+    DraftRoom["assistant"]
+  >["recommendations"][number]["factors"];
+}) {
+  const entries = [
+    ["Value", factors.projectedValue],
+    ["Scarcity", factors.scarcity],
+    ["Wait risk", factors.availabilityRisk],
+    ["Roster fit", factors.rosterFit],
+    ["Confidence", factors.confidence],
+  ] as const;
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      {entries.map(([label, value]) => (
+        <div
+          className="rounded-lg bg-white/70 px-3 py-2 dark:bg-black/20"
+          key={label}
+        >
+          <p className="text-[10px] font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
+            {label}
+          </p>
+          <p className="mt-0.5 text-sm font-bold">{Math.round(value)}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DraftAssistantPanel({ room }: { room: DraftRoom }) {
+  const assistant = room.assistant;
+  const best = assistant?.recommendations[0];
+  if (!assistant || !best) return null;
+  const scoringLabel =
+    room.league.scoringPreset === "half_ppr"
+      ? "Half-PPR"
+      : room.league.scoringPreset === "ppr"
+        ? "PPR"
+        : "standard";
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/30">
+      <div className="border-b border-emerald-200 px-5 py-4 dark:border-emerald-900">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-bold tracking-widest text-emerald-700 uppercase dark:text-emerald-300">
+              Draft assistant
+            </p>
+            <h2 className="mt-1 text-xl font-bold">
+              {assistant.picksUntilUser === 0
+                ? `You’re on the clock · Pick ${assistant.currentOverallPick}`
+                : `Your next pick: ${assistant.nextUserOverallPick} · ${assistant.picksUntilUser} picks away`}
+            </h2>
+          </div>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${assistant.dataMode === "projection_consensus" ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100" : "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"}`}
+          >
+            {assistant.dataMode === "projection_consensus"
+              ? "Projection consensus + Yahoo"
+              : "Yahoo market data only"}
+          </span>
+        </div>
+      </div>
+
+      <div className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-emerald-700 uppercase dark:text-emerald-300">
+              {assistant.picksUntilUser === 0
+                ? "Best pick now"
+                : "Current recommendation"}
+            </p>
+            <div className="mt-2 flex items-center gap-3">
+              <span
+                className={`rounded px-2 py-1 text-xs font-bold ${positionColors[best.position] ?? positionColors.DST}`}
+              >
+                {best.position}
+              </span>
+              <h3 className="truncate text-2xl font-bold">{best.fullName}</h3>
+              <span className="rounded-full bg-neutral-950 px-2.5 py-1 text-xs font-bold text-white dark:bg-white dark:text-neutral-950">
+                {best.score}
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
+              {best.nflTeam ?? "FA"}
+              {best.consensusPoints !== null
+                ? ` · ${best.consensusPoints.toFixed(1)} projected ${scoringLabel} points`
+                : ""}
+              {best.yahooAdp !== null ? ` · ADP ${best.yahooAdp}` : ""}
+            </p>
+            <ul className="mt-4 space-y-1 text-sm leading-6 text-neutral-700 dark:text-neutral-200">
+              {best.reasons.map((reason) => (
+                <li key={reason}>• {reason}</li>
+              ))}
+            </ul>
+            {best.warning ? (
+              <p className="mt-3 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                {best.warning}
+              </p>
+            ) : null}
+          </div>
+          <RecommendationAction playerId={best.playerId} room={room} />
+        </div>
+        <RecommendationFactors factors={best.factors} />
+      </div>
+
+      {assistant.recommendations.length > 1 ? (
+        <div className="border-t border-emerald-200 bg-white/50 p-5 dark:border-emerald-900 dark:bg-black/10">
+          <p className="text-xs font-bold tracking-wider text-neutral-500 uppercase">
+            Alternatives
+          </p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {assistant.recommendations.slice(1).map((recommendation) => (
+              <div
+                className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950"
+                key={recommendation.playerId}
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-neutral-500">
+                    #{recommendation.rank} · Score {recommendation.score}
+                  </p>
+                  <p className="mt-1 truncate text-sm font-bold">
+                    {recommendation.fullName}
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    {recommendation.position}
+                    {recommendation.yahooAdp !== null
+                      ? ` · ADP ${recommendation.yahooAdp}`
+                      : ""}
+                  </p>
+                </div>
+                <RecommendationAction
+                  playerId={recommendation.playerId}
+                  room={room}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {assistant.dataMode === "market_only" ? (
+        <p className="border-t border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          Refresh FantasyPros or upload projection CSVs to unlock
+          league-adjusted value, projection confidence, and stronger scarcity
+          guidance.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function Board({ room }: { room: DraftRoom }) {
   const totalRounds = Object.values(room.league.rosterSlots).reduce(
     (sum, count) => sum + count,
@@ -400,6 +591,7 @@ export function DraftRoomView({
           {error}
         </p>
       ) : null}
+      <DraftAssistantPanel room={room} />
       <Board room={room} />
       <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
         <nav className="flex overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { importCsvFilesAction } from "@/app/csv-import/actions";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { importCsvBatch } from "@/services/csv-import";
+import { retrieveLeagueConfiguration } from "@/services/league-configurations";
 
 const { redirect, revalidatePath } = vi.hoisted(() => ({
   redirect: vi.fn((path: string) => {
@@ -18,6 +19,12 @@ vi.mock("@/services/csv-import", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/csv-import")>();
   return { ...actual, importCsvBatch: vi.fn() };
 });
+vi.mock("@/services/league-configurations", () => ({
+  retrieveLeagueConfiguration: vi.fn(),
+}));
+vi.mock("@/services/projection-consensus", () => ({
+  generateProjectionConsensus: vi.fn(),
+}));
 
 const outcome = {
   runId: "11111111-1111-4111-8111-111111111111",
@@ -49,6 +56,7 @@ describe("CSV import action", () => {
       id: "33333333-3333-4333-8333-333333333333",
       email: "gm@example.com",
     });
+    vi.mocked(retrieveLeagueConfiguration).mockResolvedValue(null);
   });
 
   it("imports multiple files and summarizes mixed results", async () => {
