@@ -7,11 +7,13 @@ import {
   listDraftPicks,
   listDraftQueue,
   listYahooDraftPlayers,
+  updateDraftKeeperTeamSlots,
   updateDraftTeamNames,
 } from "@/db/repositories/draft";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import {
   clearDraftBoard,
+  assignDraftKeeperSlots,
   loadDraftRoom,
   recordNextDraftPick,
   renameDraftTeams,
@@ -32,6 +34,7 @@ vi.mock("@/db/repositories/draft", () => ({
   listYahooDraftPlayers: vi.fn(),
   removeDraftQueueEntry: vi.fn(),
   updateDraftTeamNames: vi.fn(),
+  updateDraftKeeperTeamSlots: vi.fn(),
   upsertDraftSession: vi.fn(),
 }));
 vi.mock("@/services/league-configurations", () => ({
@@ -70,6 +73,7 @@ describe("live draft service", () => {
       season: 2026,
       status: "active",
       teamNames: {},
+      keeperTeamSlots: {},
       playerPoolSnapshotId: null,
       createdAt: new Date("2026-08-30T12:00:00Z"),
       updatedAt: new Date("2026-08-30T12:00:00Z"),
@@ -191,6 +195,7 @@ describe("live draft service", () => {
       season: 2026,
       status: "active",
       teamNames: {},
+      keeperTeamSlots: {},
       playerPoolSnapshotId: snapshotId,
       createdAt: new Date("2026-08-30T12:00:00Z"),
       updatedAt: new Date("2026-08-30T12:00:00Z"),
@@ -275,6 +280,91 @@ describe("live draft service", () => {
         ]),
       ),
     );
+  });
+
+  it("maps a keeper directly to the user's draft slot", async () => {
+    const keeperId = "77777777-7777-4777-8777-777777777777";
+    vi.mocked(retrieveLeagueConfigurationById).mockResolvedValue({
+      ...DEFAULT_LEAGUE_CONFIGURATION,
+      id: leagueId,
+      userId,
+      leagueFormat: "keeper",
+      maxKeepersPerTeam: 1,
+      draftPosition: 3,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(retrieveManualRoster).mockResolvedValue([
+      {
+        id: keeperId,
+        leagueId,
+        playerId: "88888888-8888-4888-8888-888888888888",
+        fullName: "My Keeper",
+        position: "WR",
+        nflTeam: "DAL",
+        playerStatus: "active",
+        fantasyTeamName: "Any display name",
+        acquisitionType: "drafted",
+        isKeeper: true,
+        originalDraftSeason: 2025,
+        originalDraftRound: 4,
+        keeperSeason: 2026,
+        keeperCostRound: 4,
+        createdAt: new Date("2026-08-30T12:00:00Z"),
+        updatedAt: new Date("2026-08-30T12:00:00Z"),
+      },
+    ]);
+
+    await assignDraftKeeperSlots(userId, leagueId, { [keeperId]: 3 });
+
+    expect(updateDraftKeeperTeamSlots).toHaveBeenCalledWith(userId, leagueId, {
+      [keeperId]: 3,
+    });
+  });
+
+  it("skips a keeper-reserved pick when recording the next player", async () => {
+    const keeperId = "77777777-7777-4777-8777-777777777777";
+    vi.mocked(getDraftSessionForLeague).mockResolvedValue({
+      id: sessionId,
+      leagueId,
+      season: 2026,
+      status: "active",
+      teamNames: {},
+      keeperTeamSlots: { [keeperId]: 1 },
+      playerPoolSnapshotId: null,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(listDraftPicks).mockResolvedValue([]);
+    vi.mocked(retrieveManualRoster).mockResolvedValue([
+      {
+        id: keeperId,
+        leagueId,
+        playerId: "88888888-8888-4888-8888-888888888888",
+        fullName: "Round One Keeper",
+        position: "WR",
+        nflTeam: "DAL",
+        playerStatus: "active",
+        fantasyTeamName: "My Team",
+        acquisitionType: "drafted",
+        isKeeper: true,
+        originalDraftSeason: 2025,
+        originalDraftRound: 1,
+        keeperSeason: 2026,
+        keeperCostRound: 1,
+        createdAt: new Date("2026-08-30T12:00:00Z"),
+        updatedAt: new Date("2026-08-30T12:00:00Z"),
+      },
+    ]);
+
+    await recordNextDraftPick({ userId, leagueId, playerId });
+
+    expect(insertDraftPick).toHaveBeenCalledWith(sessionId, playerId, {
+      overallPick: 2,
+      round: 1,
+      pickInRound: 2,
+      fantasyTeamSlot: 2,
+    });
   });
 
   it("requires a name for every team", async () => {

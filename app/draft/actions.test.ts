@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  assignDraftKeeperSlotsAction,
   clearDraftBoardAction,
   refreshDraftFantasyProsAction,
   renameDraftTeamsAction,
@@ -10,6 +11,7 @@ import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { importCsvBatch } from "@/services/csv-import";
 import { refreshFantasyProsData } from "@/services/fantasypros-refresh";
 import {
+  assignDraftKeeperSlots,
   clearDraftBoard,
   renameDraftTeams,
   startDraftRoom,
@@ -42,6 +44,7 @@ vi.mock("@/services/projection-consensus", () => ({
   generateProjectionConsensus: vi.fn(),
 }));
 vi.mock("@/services/draft", () => ({
+  assignDraftKeeperSlots: vi.fn(),
   clearDraftBoard: vi.fn(),
   queueDraftPlayer: vi.fn(),
   recordNextDraftPick: vi.fn(),
@@ -184,6 +187,22 @@ describe("Yahoo draft upload action", () => {
       { "1": "My Team", "2": "The Rivals" },
     );
     expect(revalidatePath).toHaveBeenCalledWith("/draft");
+  });
+
+  it("saves explicit keeper draft slots", async () => {
+    const data = new FormData();
+    data.set("leagueId", "44444444-4444-4444-8444-444444444444");
+    data.set("keeperSlot.keeper-a", "3");
+    data.set("keeperSlot.keeper-b", "");
+
+    await expect(assignDraftKeeperSlotsAction(data)).rejects.toThrow(
+      "REDIRECT:/draft?tab=available&message=Keeper%20draft%20slots%20saved.",
+    );
+    expect(assignDraftKeeperSlots).toHaveBeenCalledWith(
+      user.id,
+      "44444444-4444-4444-8444-444444444444",
+      { "keeper-a": 3 },
+    );
   });
 
   it("clears the draft board", async () => {

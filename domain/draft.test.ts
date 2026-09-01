@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { draftPickCoordinates } from "@/domain/draft";
+import {
+  draftOverallPick,
+  draftPickCoordinates,
+  nextOpenOverallPick,
+} from "@/domain/draft";
 
 describe("draft pick coordinates", () => {
   it("reverses team order in even snake rounds", () => {
@@ -23,5 +27,15 @@ describe("draft pick coordinates", () => {
 
   it("keeps team order fixed for a linear draft", () => {
     expect(draftPickCoordinates(13, 12, "linear").fantasyTeamSlot).toBe(1);
+  });
+
+  it("maps a keeper's round and team slot to its snake pick", () => {
+    expect(draftOverallPick(4, 3, 12, "snake")).toBe(46);
+    expect(draftPickCoordinates(46, 12, "snake").fantasyTeamSlot).toBe(3);
+  });
+
+  it("skips drafted and keeper-reserved picks", () => {
+    expect(nextOpenOverallPick([1, 2, 4], 6)).toBe(3);
+    expect(nextOpenOverallPick([1, 2, 3], 3)).toBeNull();
   });
 });
