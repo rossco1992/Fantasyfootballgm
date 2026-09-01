@@ -50,6 +50,7 @@ export type DraftAssistantResult = {
   dataMode: "projection_consensus" | "fantasypros_market" | "market_only";
   currentOverallPick: number;
   nextUserOverallPick: number;
+  picksUntilUser?: number;
   picksUntilUser: number;
   recommendations: DraftRecommendation[];
 };
@@ -407,7 +408,8 @@ export function recommendDraftPlayers(input: {
     nextUserOverallPick: input.nextUserOverallPick,
     picksUntilUser: Math.max(
       0,
-      input.nextUserOverallPick - input.currentOverallPick,
+      input.picksUntilUser ??
+        input.nextUserOverallPick - input.currentOverallPick,
     ),
     recommendations: ranked,
   };

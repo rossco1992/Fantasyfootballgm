@@ -16,6 +16,7 @@ type DraftSessionRow = {
   season: number;
   status: "active" | "completed";
   team_names: Record<string, string>;
+  keeper_team_slots: Record<string, number>;
   player_pool_snapshot_id: string | null;
   created_at: Date;
   updated_at: Date;
@@ -60,6 +61,7 @@ function mapSession(row: DraftSessionRow): DraftSession {
     season: row.season,
     status: row.status,
     teamNames: row.team_names,
+    keeperTeamSlots: row.keeper_team_slots,
     playerPoolSnapshotId: row.player_pool_snapshot_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -103,7 +105,8 @@ export async function getDraftSessionForLeague(
 ): Promise<DraftSession | null> {
   const result = await query<DraftSessionRow>(
     `select session.id, session.league_id, session.season, session.status,
-            session.team_names, session.player_pool_snapshot_id,
+            session.team_names, session.keeper_team_slots,
+            session.player_pool_snapshot_id,
             session.created_at, session.updated_at
        from draft_sessions session
        join league_configurations league on league.id = session.league_id
@@ -129,7 +132,7 @@ export async function upsertDraftSession(
          draft_sessions.player_pool_snapshot_id
        ),
        updated_at = now()
-     returning id, league_id, season, status, team_names,
+     returning id, league_id, season, status, team_names, keeper_team_slots,
                player_pool_snapshot_id, created_at, updated_at`,
     [leagueId, userId, season, playerPoolSnapshotId],
   );
@@ -152,6 +155,26 @@ export async function updateDraftTeamNames(
         and league.id = session.league_id
         and league.user_id = $2`,
     [leagueId, userId, JSON.stringify(teamNames)],
+  );
+  if (result.rowCount === 0) {
+    throw new Error("The draft session could not be updated.");
+  }
+}
+
+export async function updateDraftKeeperTeamSlots(
+  userId: string,
+  leagueId: string,
+  keeperTeamSlots: Record<string, number>,
+): Promise<void> {
+  const result = await query(
+    `update draft_sessions session
+        set keeper_team_slots = $3::jsonb,
+            updated_at = now()
+       from league_configurations league
+      where session.league_id = $1
+        and league.id = session.league_id
+        and league.user_id = $2`,
+    [leagueId, userId, JSON.stringify(keeperTeamSlots)],
   );
   if (result.rowCount === 0) {
     throw new Error("The draft session could not be updated.");

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import {
+  assignDraftKeeperSlotsAction,
   clearDraftBoardAction,
   queueDraftPlayerAction,
   recordDraftPickAction,
@@ -317,7 +318,12 @@ function Board({ room }: { room: DraftRoom }) {
   const picks = new Map(
     room.picks.map((pick) => [`${pick.round}:${pick.fantasyTeamSlot}`, pick]),
   );
-  const current = room.picks.length + 1;
+  const keeperReservations = new Map(
+    room.keeperReservations.map((reservation) => [
+      `${reservation.keeper.keeperCostRound}:${reservation.fantasyTeamSlot}`,
+      reservation,
+    ]),
+  );
   const teamName = (slot: number) =>
     room.session?.teamNames[String(slot)] ??
     (slot === room.league.draftPosition ? "My Team" : `Team ${slot}`);
@@ -329,15 +335,20 @@ function Board({ room }: { room: DraftRoom }) {
           <p className="text-xs font-semibold tracking-widest text-emerald-600 uppercase dark:text-emerald-400">
             Live draft board
           </p>
-          <h2 className="mt-1 text-xl font-bold">Pick {current}</h2>
+          <h2 className="mt-1 text-xl font-bold">
+            {room.currentOverallPick === null
+              ? "Draft complete"
+              : `Pick ${room.currentOverallPick}`}
+          </h2>
         </div>
         <div className="flex items-center gap-2">
           <details className="group relative">
             <summary className="cursor-pointer list-none rounded-lg border border-neutral-300 px-3 py-2 text-xs font-semibold hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900">
-              Edit team names
+              Draft settings
             </summary>
-            <div className="absolute top-11 right-0 z-30 w-[min(42rem,calc(100vw-3rem))] rounded-xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-950">
+            <div className="absolute top-11 right-0 z-30 max-h-[80vh] w-[min(42rem,calc(100vw-3rem))] overflow-y-auto rounded-xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-950">
               <form action={renameDraftTeamsAction}>
+                <p className="mb-3 text-sm font-bold">Team names</p>
                 <input name="leagueId" type="hidden" value={room.league.id} />
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {Array.from({ length: room.league.teamCount }, (_, index) => {
@@ -365,6 +376,58 @@ function Board({ room }: { room: DraftRoom }) {
                   Save team names
                 </button>
               </form>
+              {room.keepers.length ? (
+                <form
+                  action={assignDraftKeeperSlotsAction}
+                  className="mt-5 border-t border-neutral-200 pt-5 dark:border-neutral-800"
+                >
+                  <input name="leagueId" type="hidden" value={room.league.id} />
+                  <p className="text-sm font-bold">Keeper draft slots</p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-500">
+                    Assign each keeper to a team. Its charged round will be
+                    reserved automatically. Slot {room.league.draftPosition} is
+                    your team.
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {room.keepers.map((keeper) => (
+                      <label className="grid gap-1 text-xs" key={keeper.id}>
+                        <span className="font-semibold text-neutral-700 dark:text-neutral-200">
+                          {keeper.fullName} · Round {keeper.keeperCostRound}
+                        </span>
+                        <select
+                          className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                          defaultValue={
+                            room.session?.keeperTeamSlots[keeper.id] ?? ""
+                          }
+                          name={`keeperSlot.${keeper.id}`}
+                        >
+                          <option value="">Not assigned</option>
+                          {Array.from(
+                            { length: room.league.teamCount },
+                            (_, index) => {
+                              const slot = index + 1;
+                              return (
+                                <option key={slot} value={slot}>
+                                  Slot {slot} · {teamName(slot)}
+                                  {slot === room.league.draftPosition
+                                    ? " (My team)"
+                                    : ""}
+                                </option>
+                              );
+                            },
+                          )}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    type="submit"
+                  >
+                    Save keeper slots
+                  </button>
+                </form>
+              ) : null}
             </div>
           </details>
           {room.picks.length ? (
@@ -422,6 +485,9 @@ function Board({ room }: { room: DraftRoom }) {
                 (_, teamIndex) => {
                   const teamSlot = teamIndex + 1;
                   const pick = picks.get(`${round}:${teamSlot}`);
+                  const keeperReservation = keeperReservations.get(
+                    `${round}:${teamSlot}`,
+                  );
                   const pickInRound =
                     room.league.draftType === "snake" && round % 2 === 0
                       ? room.league.teamCount - teamSlot + 1
@@ -445,6 +511,15 @@ function Board({ room }: { room: DraftRoom }) {
                           <p className="text-[10px] text-neutral-500">
                             {pick.position}
                             {pick.nflTeam ? ` · ${pick.nflTeam}` : ""}
+                          </p>
+                        </>
+                      ) : keeperReservation ? (
+                        <>
+                          <p className="mt-1 max-w-28 truncate text-xs font-semibold text-amber-800 dark:text-amber-200">
+                            {keeperReservation.keeper.fullName}
+                          </p>
+                          <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                            {keeperReservation.keeper.position} · Keeper
                           </p>
                         </>
                       ) : null}
@@ -549,6 +624,10 @@ function MyRoster({ room }: { room: DraftRoom }) {
   const myPicks = room.picks.filter(
     (pick) => pick.fantasyTeamSlot === room.league.draftPosition,
   );
+  const myKeepers = room.keeperReservations.filter(
+    (reservation) =>
+      reservation.fantasyTeamSlot === room.league.draftPosition,
+  );
   return (
     <div className="p-4">
       {myPicks.length ? (
@@ -573,15 +652,15 @@ function MyRoster({ room }: { room: DraftRoom }) {
           Your drafted players will appear here automatically.
         </p>
       )}
-      {room.keepers.length ? (
+      {myKeepers.length ? (
         <div className="mt-5 border-t border-neutral-200 pt-5 dark:border-neutral-800">
           <p className="text-xs font-bold tracking-wider text-neutral-500 uppercase">
-            Keeper context
+            My keepers
           </p>
-          {room.keepers.map((keeper) => (
+          {myKeepers.map(({ keeper }) => (
             <p className="mt-2 text-sm" key={keeper.id}>
               <span className="font-semibold">{keeper.fullName}</span> ·{" "}
-              {keeper.fantasyTeamName} · Round {keeper.keeperCostRound}
+              {keeper.position} · Round {keeper.keeperCostRound}
             </p>
           ))}
         </div>

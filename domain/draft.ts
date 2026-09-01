@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { canonicalPlayerSchema } from "@/domain/player";
+import type { RosterAssignment } from "@/domain/roster";
 
 export const DRAFT_SESSION_STATUSES = ["active", "completed"] as const;
 
@@ -10,6 +11,9 @@ export const draftSessionSchema = z.object({
   season: z.number().int().min(2000).max(2100),
   status: z.enum(DRAFT_SESSION_STATUSES),
   teamNames: z.record(z.string(), z.string()),
+  keeperTeamSlots: z
+    .record(z.string(), z.number().int().positive())
+    .default({}),
   playerPoolSnapshotId: z.string().uuid().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -44,6 +48,12 @@ export type DraftPlayer = z.infer<typeof draftPlayerSchema>;
 export type DraftPick = z.infer<typeof draftPickSchema>;
 export type DraftQueueEntry = z.infer<typeof draftQueueEntrySchema>;
 
+export type DraftKeeperReservation = {
+  keeper: RosterAssignment;
+  fantasyTeamSlot: number;
+  overallPick: number;
+};
+
 export type DraftPickCoordinates = {
   overallPick: number;
   round: number;
@@ -72,4 +82,40 @@ export function draftPickCoordinates(
       : pickInRound;
 
   return { overallPick, round, pickInRound, fantasyTeamSlot };
+}
+
+/** Deterministically maps a round and fantasy-team slot back to overall pick. */
+export function draftOverallPick(
+  round: number,
+  fantasyTeamSlot: number,
+  teamCount: number,
+  draftType: "snake" | "linear",
+): number {
+  if (!Number.isInteger(round) || round < 1) {
+    throw new Error("Round must be a positive whole number.");
+  }
+  if (
+    !Number.isInteger(fantasyTeamSlot) ||
+    fantasyTeamSlot < 1 ||
+    fantasyTeamSlot > teamCount
+  ) {
+    throw new Error("Fantasy-team slot is outside the league.");
+  }
+  const pickInRound =
+    draftType === "snake" && round % 2 === 0
+      ? teamCount - fantasyTeamSlot + 1
+      : fantasyTeamSlot;
+  return (round - 1) * teamCount + pickInRound;
+}
+
+/** Returns the first live draft pick not already drafted or reserved. */
+export function nextOpenOverallPick(
+  occupiedOverallPicks: Iterable<number>,
+  totalPicks: number,
+): number | null {
+  const occupied = new Set(occupiedOverallPicks);
+  for (let overallPick = 1; overallPick <= totalPicks; overallPick += 1) {
+    if (!occupied.has(overallPick)) return overallPick;
+  }
+  return null;
 }

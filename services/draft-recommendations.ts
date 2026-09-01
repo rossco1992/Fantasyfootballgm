@@ -9,14 +9,15 @@ import {
   recommendDraftPlayers,
 } from "@/domain/draft-recommendation";
 import {
+  type DraftKeeperReservation,
   type DraftPick,
   type DraftPlayer,
   type DraftSession,
   draftPickCoordinates,
+  nextOpenOverallPick,
 } from "@/domain/draft";
 import type { LeagueConfiguration } from "@/domain/league-configuration";
 import type { PlayerPosition } from "@/domain/player";
-import type { RosterAssignment } from "@/domain/roster";
 import { generateProjectionConsensus } from "@/services/projection-consensus";
 
 type ConsensusSnapshot = Awaited<
@@ -27,9 +28,11 @@ function nextUserPick(
   currentOverallPick: number,
   totalPicks: number,
   league: LeagueConfiguration,
+  occupiedOverallPicks: Set<number>,
 ): number {
   for (let pick = currentOverallPick; pick <= totalPicks; pick += 1) {
     if (
+      !occupiedOverallPicks.has(pick) &&
       draftPickCoordinates(pick, league.teamCount, league.draftType)
         .fantasyTeamSlot === league.draftPosition
     ) {
@@ -39,28 +42,22 @@ function nextUserPick(
   return currentOverallPick;
 }
 
-function sameTeamName(left: string | undefined, right: string): boolean {
-  return left?.trim().toLowerCase() === right.trim().toLowerCase();
-}
-
 function rosterPositionCounts(input: {
   picks: DraftPick[];
-  keepers: RosterAssignment[];
   league: LeagueConfiguration;
-  session: DraftSession;
+  keeperReservations: DraftKeeperReservation[];
 }): Partial<Record<PlayerPosition, number>> {
   const positions: PlayerPosition[] = input.picks
     .filter((pick) => pick.fantasyTeamSlot === input.league.draftPosition)
     .map((pick) => pick.position as PlayerPosition);
-  const myTeamName =
-    input.session.teamNames[String(input.league.draftPosition)];
-  if (myTeamName) {
-    positions.push(
-      ...input.keepers
-        .filter((keeper) => sameTeamName(myTeamName, keeper.fantasyTeamName))
-        .map((keeper) => keeper.position),
-    );
-  }
+  positions.push(
+    ...input.keeperReservations
+      .filter(
+        (reservation) =>
+          reservation.fantasyTeamSlot === input.league.draftPosition,
+      )
+      .map((reservation) => reservation.keeper.position),
+  );
   return positions.reduce<Partial<Record<PlayerPosition, number>>>(
     (counts, position) => ({
       ...counts,
@@ -100,7 +97,7 @@ export function buildDraftAssistant(input: {
   session: DraftSession;
   availablePlayers: DraftPlayer[];
   picks: DraftPick[];
-  keepers: RosterAssignment[];
+  keeperReservations: DraftKeeperReservation[];
   consensus: NonNullable<ConsensusSnapshot> | null;
   fantasyProsData?: FantasyProsDraftData | null;
 }): DraftAssistantResult {
@@ -142,22 +139,38 @@ export function buildDraftAssistant(input: {
       };
     },
   );
-  const currentOverallPick = input.picks.length + 1;
   const rounds = Object.values(input.league.rosterSlots).reduce(
     (total, count) => total + count,
     0,
   );
   const totalPicks = rounds * input.league.teamCount;
+  const occupiedOverallPicks = new Set([
+    ...input.picks.map((pick) => pick.overallPick),
+    ...input.keeperReservations.map((reservation) => reservation.overallPick),
+  ]);
+  const currentOverallPick =
+    nextOpenOverallPick(occupiedOverallPicks, totalPicks) ?? totalPicks + 1;
+  const nextUserOverallPick = nextUserPick(
+    currentOverallPick,
+    totalPicks,
+    input.league,
+    occupiedOverallPicks,
+  );
+  let picksUntilUser = 0;
+  for (
+    let pick = currentOverallPick;
+    pick < nextUserOverallPick;
+    pick += 1
+  ) {
+    if (!occupiedOverallPicks.has(pick)) picksUntilUser += 1;
+  }
   return recommendDraftPlayers({
     candidates,
     league: input.league,
     rosterPositionCounts: rosterPositionCounts(input),
     currentOverallPick,
-    nextUserOverallPick: nextUserPick(
-      currentOverallPick,
-      totalPicks,
-      input.league,
-    ),
+    nextUserOverallPick,
+    picksUntilUser,
   });
 }
 
@@ -166,7 +179,7 @@ export async function loadDraftAssistant(input: {
   session: DraftSession;
   availablePlayers: DraftPlayer[];
   picks: DraftPick[];
-  keepers: RosterAssignment[];
+  keeperReservations: DraftKeeperReservation[];
 }): Promise<DraftAssistantResult> {
   const [consensus, fantasyProsData] = await Promise.all([
     projectionSnapshot(input),

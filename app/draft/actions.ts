@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { refreshFantasyProsData } from "@/services/fantasypros-refresh";
 import {
+  assignDraftKeeperSlots,
   clearDraftBoard,
   queueDraftPlayer,
   recordNextDraftPick,
@@ -192,6 +193,28 @@ export async function renameDraftTeamsAction(formData: FormData) {
   }
   revalidatePath("/draft");
   redirect(draftUrl("message", "Team names saved."));
+}
+
+export async function assignDraftKeeperSlotsAction(formData: FormData) {
+  const user = await requireAuthenticatedUser();
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const keeperTeamSlots = Object.fromEntries(
+    [...formData.entries()]
+      .filter(
+        ([key, value]) => key.startsWith("keeperSlot.") && String(value),
+      )
+      .map(([key, value]) => [
+        key.slice("keeperSlot.".length),
+        Number(value),
+      ]),
+  );
+  try {
+    await assignDraftKeeperSlots(user.id, leagueId, keeperTeamSlots);
+  } catch {
+    redirect(draftUrl("error", "Keeper draft slots could not be saved."));
+  }
+  revalidatePath("/draft");
+  redirect(draftUrl("message", "Keeper draft slots saved."));
 }
 
 export async function undoDraftPickAction(formData: FormData) {

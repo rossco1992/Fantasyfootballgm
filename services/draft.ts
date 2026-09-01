@@ -8,15 +8,19 @@ import {
   listDraftQueue,
   listYahooDraftPlayers,
   removeDraftQueueEntry,
+  updateDraftKeeperTeamSlots,
   updateDraftTeamNames,
   upsertDraftSession,
 } from "@/db/repositories/draft";
 import {
+  type DraftKeeperReservation,
   type DraftPick,
   type DraftPlayer,
   type DraftQueueEntry,
   type DraftSession,
+  draftOverallPick,
   draftPickCoordinates,
+  nextOpenOverallPick,
 } from "@/domain/draft";
 import type { DraftAssistantResult } from "@/domain/draft-recommendation";
 import type { LeagueConfiguration } from "@/domain/league-configuration";
@@ -39,9 +43,52 @@ export type DraftRoom = {
   picks: DraftPick[];
   queue: DraftQueueEntry[];
   keepers: RosterAssignment[];
+  keeperReservations: DraftKeeperReservation[];
+  currentOverallPick: number | null;
   assistant: DraftAssistantResult | null;
   fantasyProsFreshness: ProviderFreshness | null;
 };
+
+function totalDraftRounds(league: LeagueConfiguration): number {
+  return Object.values(league.rosterSlots).reduce(
+    (total, count) => total + count,
+    0,
+  );
+}
+
+export function draftKeeperReservations(input: {
+  league: LeagueConfiguration;
+  session: DraftSession;
+  keepers: RosterAssignment[];
+}): DraftKeeperReservation[] {
+  const rounds = totalDraftRounds(input.league);
+  return input.keepers.flatMap((keeper) => {
+    const fantasyTeamSlot = input.session.keeperTeamSlots[keeper.id];
+    const round = keeper.keeperCostRound;
+    if (
+      fantasyTeamSlot === undefined ||
+      fantasyTeamSlot < 1 ||
+      fantasyTeamSlot > input.league.teamCount ||
+      round === null ||
+      round < 1 ||
+      round > rounds
+    ) {
+      return [];
+    }
+    return [
+      {
+        keeper,
+        fantasyTeamSlot,
+        overallPick: draftOverallPick(
+          round,
+          fantasyTeamSlot,
+          input.league.teamCount,
+          input.league.draftType,
+        ),
+      },
+    ];
+  });
+}
 
 async function ownedLeague(
   userId: string,
@@ -72,6 +119,8 @@ export async function loadDraftRoom(
       picks: [],
       queue: [],
       keepers: keepers.filter((assignment) => assignment.isKeeper),
+      keeperReservations: [],
+      currentOverallPick: null,
       assistant: null,
       fantasyProsFreshness,
     };
@@ -87,12 +136,24 @@ export async function loadDraftRoom(
   const availablePlayers = players.filter(
     (player) => !draftedIds.has(player.id) && !keeperIds.has(player.id),
   );
+  const keeperReservations = draftKeeperReservations({
+    league,
+    session,
+    keepers: keeperAssignments,
+  });
+  const currentOverallPick = nextOpenOverallPick(
+    [
+      ...picks.map((pick) => pick.overallPick),
+      ...keeperReservations.map((reservation) => reservation.overallPick),
+    ],
+    totalDraftRounds(league) * league.teamCount,
+  );
   const assistant = await loadDraftAssistant({
     league,
     session,
     availablePlayers,
     picks,
-    keepers: keeperAssignments,
+    keeperReservations,
   });
   return {
     league,
@@ -107,9 +168,59 @@ export async function loadDraftRoom(
         !keeperIds.has(entry.id),
     ),
     keepers: keeperAssignments,
+    keeperReservations,
+    currentOverallPick,
     assistant,
     fantasyProsFreshness,
   };
+}
+
+export async function assignDraftKeeperSlots(
+  userId: string,
+  leagueId: string,
+  rawKeeperTeamSlots: Record<string, number>,
+): Promise<void> {
+  const league = await ownedLeague(userId, leagueId);
+  const session = await getDraftSessionForLeague(userId, leagueId);
+  if (!session) throw new DraftRoomError("Start the draft room first.");
+  const keepers = (await retrieveManualRoster(userId, leagueId)).filter(
+    (assignment) => assignment.isKeeper,
+  );
+  const keeperById = new Map(keepers.map((keeper) => [keeper.id, keeper]));
+  const keeperTeamSlots: Record<string, number> = {};
+  const reservedRounds = new Set<string>();
+  const keepersPerSlot = new Map<number, number>();
+  const totalRounds = totalDraftRounds(league);
+
+  for (const [keeperId, slot] of Object.entries(rawKeeperTeamSlots)) {
+    const keeper = keeperById.get(keeperId);
+    if (!keeper) throw new DraftRoomError("A selected keeper was not found.");
+    if (!Number.isInteger(slot) || slot < 1 || slot > league.teamCount) {
+      throw new DraftRoomError("Keeper team slots must be inside the league.");
+    }
+    if (
+      keeper.keeperCostRound === null ||
+      keeper.keeperCostRound > totalRounds
+    ) {
+      throw new DraftRoomError(`${keeper.fullName} needs a valid keeper round.`);
+    }
+    const roundKey = `${slot}:${keeper.keeperCostRound}`;
+    if (reservedRounds.has(roundKey)) {
+      throw new DraftRoomError(
+        `Team ${slot} already has a keeper assigned to round ${keeper.keeperCostRound}.`,
+      );
+    }
+    const count = (keepersPerSlot.get(slot) ?? 0) + 1;
+    if (count > league.maxKeepersPerTeam) {
+      throw new DraftRoomError(
+        `Team ${slot} exceeds the league's keeper limit.`,
+      );
+    }
+    reservedRounds.add(roundKey);
+    keepersPerSlot.set(slot, count);
+    keeperTeamSlots[keeperId] = slot;
+  }
+  await updateDraftKeeperTeamSlots(userId, leagueId, keeperTeamSlots);
 }
 
 export async function startDraftRoom(
@@ -151,9 +262,10 @@ export async function recordNextDraftPick(input: {
   const league = await ownedLeague(input.userId, input.leagueId);
   const session = await getDraftSessionForLeague(input.userId, input.leagueId);
   if (!session) throw new DraftRoomError("Upload Yahoo players first.");
-  const [players, picks] = await Promise.all([
+  const [players, picks, assignments] = await Promise.all([
     listYahooDraftPlayers(session.playerPoolSnapshotId),
     listDraftPicks(session.id),
+    retrieveManualRoster(input.userId, input.leagueId),
   ]);
   if (!players.some((player) => player.id === input.playerId)) {
     throw new DraftRoomError("That player is not in the Yahoo draft pool.");
@@ -161,15 +273,28 @@ export async function recordNextDraftPick(input: {
   if (picks.some((pick) => pick.playerId === input.playerId)) {
     throw new DraftRoomError("That player has already been drafted.");
   }
-  const rounds = Object.values(league.rosterSlots).reduce(
-    (total, count) => total + count,
-    0,
+  const keepers = assignments.filter((assignment) => assignment.isKeeper);
+  if (keepers.some((keeper) => keeper.playerId === input.playerId)) {
+    throw new DraftRoomError("That player is already assigned as a keeper.");
+  }
+  const keeperReservations = draftKeeperReservations({
+    league,
+    session,
+    keepers,
+  });
+  const totalPicks = totalDraftRounds(league) * league.teamCount;
+  const nextOverallPick = nextOpenOverallPick(
+    [
+      ...picks.map((pick) => pick.overallPick),
+      ...keeperReservations.map((reservation) => reservation.overallPick),
+    ],
+    totalPicks,
   );
-  if (picks.length >= rounds * league.teamCount) {
+  if (nextOverallPick === null) {
     throw new DraftRoomError("The draft is complete.");
   }
   const coordinates = draftPickCoordinates(
-    picks.length + 1,
+    nextOverallPick,
     league.teamCount,
     league.draftType,
   );
