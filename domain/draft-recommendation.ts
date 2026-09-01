@@ -50,7 +50,6 @@ export type DraftAssistantResult = {
   dataMode: "projection_consensus" | "fantasypros_market" | "market_only";
   currentOverallPick: number;
   nextUserOverallPick: number;
-  picksUntilUser?: number;
   picksUntilUser: number;
   recommendations: DraftRecommendation[];
 };
@@ -253,6 +252,7 @@ export function recommendDraftPlayers(input: {
   rosterPositionCounts: PositionCounts;
   currentOverallPick: number;
   nextUserOverallPick: number;
+  picksUntilUser?: number;
   limit?: number;
 }): DraftAssistantResult {
   const candidates = input.candidates.filter(
