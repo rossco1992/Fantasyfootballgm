@@ -22,7 +22,9 @@ separate CSVs can coexist and one malformed file does not discard valid files.
 
 `fantasypros-refresh.ts` creates the server-authenticated FantasyPros adapter
 and sends its normalized snapshot through that same ingestion pipeline. The API
-key never enters a form or browser response.
+key never enters a form or browser response. A draft-room refresh collects
+players, ECR/tiers, ADP, projections, injuries, and current player news in one
+coherent snapshot before regenerating league-scored projection consensus.
 
 `data-health.ts` assembles provider freshness, failures, and unresolved player
 counts for the dashboard. It also applies authenticated manual match decisions
@@ -35,7 +37,8 @@ snapshot, and evaluates frozen provider/consensus predictions against later
 outcomes. Replaying identical inputs produces the same fingerprint.
 
 `draft-recommendations.ts` joins the exact Yahoo snapshot selected for the live
-draft with the latest league-scored consensus projection, the user's live
-roster, keeper context, and snake-draft turn order before calling the pure
-domain ranking engine. If projections are unavailable it explicitly returns a
-market-only Yahoo fallback rather than inventing values.
+draft with FantasyPros ECR, tiers, ADP, injuries, news, the latest
+league-scored consensus projection, the user's live roster, keeper context, and
+snake-draft turn order before calling the pure domain ranking engine. If
+projections are unavailable it falls back visibly to FantasyPros market data,
+then to Yahoo-only data, rather than inventing values.

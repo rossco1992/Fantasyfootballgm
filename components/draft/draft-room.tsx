@@ -4,6 +4,7 @@ import {
   clearDraftBoardAction,
   queueDraftPlayerAction,
   recordDraftPickAction,
+  refreshDraftFantasyProsAction,
   renameDraftTeamsAction,
   undoDraftPickAction,
   unqueueDraftPlayerAction,
@@ -145,11 +146,26 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
       : room.league.scoringPreset === "ppr"
         ? "PPR"
         : "standard";
+  const dataLabel =
+    assistant.dataMode === "projection_consensus"
+      ? "FantasyPros projections + Yahoo"
+      : assistant.dataMode === "fantasypros_market"
+        ? "FantasyPros ECR/ADP + Yahoo"
+        : "Yahoo market data only";
+  const freshness = room.fantasyProsFreshness;
+  const refreshedLabel = freshness?.lastSuccessAt
+    ? `Updated ${freshness.lastSuccessAt.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })}${freshness.lastStatus === "partial" ? " · partial" : ""}${freshness.isStale ? " · stale" : ""}`
+    : "FantasyPros has not been refreshed";
 
   return (
     <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/30">
       <div className="border-b border-emerald-200 px-5 py-4 dark:border-emerald-900">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-bold tracking-widest text-emerald-700 uppercase dark:text-emerald-300">
               Draft assistant
@@ -160,14 +176,32 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
                 : `Your next pick: ${assistant.nextUserOverallPick} · ${assistant.picksUntilUser} picks away`}
             </h2>
           </div>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${assistant.dataMode === "projection_consensus" ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100" : "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"}`}
-          >
-            {assistant.dataMode === "projection_consensus"
-              ? "Projection consensus + Yahoo"
-              : "Yahoo market data only"}
-          </span>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${assistant.dataMode === "market_only" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : "bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100"}`}
+            >
+              {dataLabel}
+            </span>
+            <form action={refreshDraftFantasyProsAction}>
+              <input name="leagueId" type="hidden" value={room.league.id} />
+              <input name="season" type="hidden" value={room.session?.season} />
+              <input name="returnTab" type="hidden" value="available" />
+              <button
+                className="rounded-lg border border-emerald-600 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-neutral-950 dark:text-emerald-300 dark:hover:bg-emerald-950"
+                type="submit"
+              >
+                Refresh FantasyPros
+              </button>
+            </form>
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              {refreshedLabel}
+            </p>
+          </div>
         </div>
+        <p className="mt-3 text-[11px] leading-5 text-neutral-500 dark:text-neutral-400">
+          Refreshes players · ECR and tiers · ADP · projections · injuries ·
+          latest news
+        </p>
       </div>
 
       <div className="p-5">
@@ -195,6 +229,12 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
                 ? ` · ${best.consensusPoints.toFixed(1)} projected ${scoringLabel} points`
                 : ""}
               {best.yahooAdp !== null ? ` · ADP ${best.yahooAdp}` : ""}
+              {best.fantasyProsRank !== null
+                ? ` · FP ECR ${best.fantasyProsRank}`
+                : ""}
+              {best.fantasyProsTier !== null
+                ? ` · Tier ${best.fantasyProsTier}`
+                : ""}
             </p>
             <ul className="mt-4 space-y-1 text-sm leading-6 text-neutral-700 dark:text-neutral-200">
               {best.reasons.map((reason) => (
@@ -205,6 +245,17 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
               <p className="mt-3 text-sm font-semibold text-amber-700 dark:text-amber-300">
                 {best.warning}
               </p>
+            ) : null}
+            {best.fantasyProsNewsHeadline ? (
+              <div className="mt-3 rounded-lg border border-neutral-200 bg-white/70 p-3 text-xs dark:border-neutral-800 dark:bg-black/20">
+                <p className="font-semibold">Latest FantasyPros news</p>
+                <p className="mt-1 text-neutral-700 dark:text-neutral-300">
+                  {best.fantasyProsNewsHeadline}
+                  {best.fantasyProsNewsSummary
+                    ? ` — ${best.fantasyProsNewsSummary}`
+                    : ""}
+                </p>
+              </div>
             ) : null}
           </div>
           <RecommendationAction playerId={best.playerId} room={room} />
@@ -249,7 +300,7 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
 
       {assistant.dataMode === "market_only" ? (
         <p className="border-t border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          Refresh FantasyPros or upload projection CSVs to unlock
+          Use Refresh FantasyPros above or upload projection CSVs to unlock
           league-adjusted value, projection confidence, and stronger scarcity
           guidance.
         </p>

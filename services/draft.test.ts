@@ -19,6 +19,7 @@ import {
 import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
 import { retrieveManualRoster } from "@/services/roster-setup";
 import { loadDraftAssistant } from "@/services/draft-recommendations";
+import { retrieveProviderFreshness } from "@/services/provider-ingestion";
 
 vi.mock("@/db/repositories/draft", () => ({
   addDraftQueueEntry: vi.fn(),
@@ -41,6 +42,9 @@ vi.mock("@/services/roster-setup", () => ({
 }));
 vi.mock("@/services/draft-recommendations", () => ({
   loadDraftAssistant: vi.fn(),
+}));
+vi.mock("@/services/provider-ingestion", () => ({
+  retrieveProviderFreshness: vi.fn(),
 }));
 
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -85,8 +89,9 @@ describe("live draft service", () => {
       },
     ]);
     vi.mocked(retrieveManualRoster).mockResolvedValue([]);
+    vi.mocked(retrieveProviderFreshness).mockResolvedValue(null);
     vi.mocked(loadDraftAssistant).mockResolvedValue({
-      version: "draft-recommendation-v1",
+      version: "draft-recommendation-v2",
       dataMode: "market_only",
       currentOverallPick: 1,
       nextUserOverallPick: 1,

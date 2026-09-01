@@ -70,6 +70,18 @@ const payload: FantasyProsPayload = {
         },
       ],
     }),
+    news: available({
+      items: [
+        {
+          id: 501,
+          player_id: 101,
+          title: "Example Runner returns to practice",
+          impact: "He was limited and remains worth monitoring.",
+          created: "2026-08-27 11:30:00",
+          link: "https://www.fantasypros.com/nfl/news/example.php",
+        },
+      ],
+    }),
   },
 };
 
@@ -90,7 +102,7 @@ describeProviderAdapterContract({
 });
 
 describe("FantasyPros provider adapter", () => {
-  it("normalizes identities, ECR, ADP, projections, and injuries", async () => {
+  it("normalizes identities, ECR, ADP, projections, injuries, and news", async () => {
     const instance = adapter();
     const snapshot = instance.normalize(await instance.fetch(request), request);
     const metadata = providerSnapshotMetadataSchema.parse(snapshot);
@@ -113,6 +125,7 @@ describe("FantasyPros provider adapter", () => {
       "adp",
       "projection",
       "injury",
+      "news",
     ]);
     expect(records[2]?.normalized).toMatchObject({
       type: "projection",
@@ -122,6 +135,11 @@ describe("FantasyPros provider adapter", () => {
     expect(records[3]?.normalized).toMatchObject({
       type: "injury",
       status: "questionable",
+    });
+    expect(records[4]?.normalized).toMatchObject({
+      type: "news",
+      headline: "Example Runner returns to practice",
+      publishedAt: "2026-08-27T11:30:00.000Z",
     });
   });
 
@@ -154,6 +172,7 @@ describe("FantasyPros provider adapter", () => {
         expect.stringContaining(
           "/nfl/injuries?year=2026&week=0&include_probabilities=true",
         ),
+        expect.stringContaining("/nfl/news?limit=100&order_by=updated"),
       ]),
     );
   });

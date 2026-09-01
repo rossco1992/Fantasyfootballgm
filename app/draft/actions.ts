@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAuthenticatedUser } from "@/lib/auth/session";
+import { refreshFantasyProsData } from "@/services/fantasypros-refresh";
 import {
   clearDraftBoard,
   queueDraftPlayer,
@@ -14,6 +15,8 @@ import {
   unqueueDraftPlayer,
 } from "@/services/draft";
 import { MAX_CSV_BYTES, importCsvBatch } from "@/services/csv-import";
+import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
+import { generateProjectionConsensus } from "@/services/projection-consensus";
 
 function draftUrl(
   kind: "message" | "error",
@@ -94,6 +97,66 @@ export async function uploadYahooPlayersAction(
   revalidatePath("/draft");
   redirect(
     draftUrl("message", "Yahoo players loaded. Your draft room is ready."),
+  );
+}
+
+export async function refreshDraftFantasyProsAction(
+  formData: FormData,
+): Promise<never> {
+  const user = await requireAuthenticatedUser();
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const season = Number(formData.get("season"));
+  const league = await retrieveLeagueConfigurationById(leagueId, user.id);
+  if (!league) {
+    redirect(draftUrl("error", "The league could not be found."));
+  }
+
+  let outcome: Awaited<ReturnType<typeof refreshFantasyProsData>>;
+  try {
+    outcome = await refreshFantasyProsData({
+      season,
+      week: null,
+      scoring: league.scoringPreset,
+    });
+  } catch {
+    redirect(
+      draftUrl(
+        "error",
+        "FantasyPros could not be refreshed. Verify the Vercel API key and try again.",
+      ),
+    );
+  }
+  if (outcome.status === "failed") {
+    redirect(
+      draftUrl(
+        "error",
+        "FantasyPros could not be refreshed. Verify the Vercel API key and try again.",
+      ),
+    );
+  }
+
+  try {
+    await generateProjectionConsensus({
+      leagueId: league.id,
+      userId: user.id,
+      season,
+      week: null,
+      horizon: "preseason",
+    });
+  } catch {
+    // ECR, ADP, news, and injuries remain usable if projections are omitted.
+  }
+
+  revalidatePath("/draft");
+  const coverage = outcome.coverageGaps.length
+    ? ` Partial data: ${outcome.coverageGaps.join(", ")}.`
+    : " Players, ECR, ADP, projections, injuries, and news are current.";
+  redirect(
+    draftUrl(
+      "message",
+      `FantasyPros refreshed.${coverage}`,
+      String(formData.get("returnTab") ?? "available"),
+    ),
   );
 }
 

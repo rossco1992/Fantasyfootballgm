@@ -1,5 +1,9 @@
 import { getLatestConsensusSnapshotForLeague } from "@/db/repositories/projection-consensus";
 import {
+  getLatestFantasyProsDraftData,
+  type FantasyProsDraftData,
+} from "@/db/repositories/draft-signals";
+import {
   type DraftAssistantResult,
   type DraftRecommendationCandidate,
   recommendDraftPlayers,
@@ -98,21 +102,40 @@ export function buildDraftAssistant(input: {
   picks: DraftPick[];
   keepers: RosterAssignment[];
   consensus: NonNullable<ConsensusSnapshot> | null;
+  fantasyProsData?: FantasyProsDraftData | null;
 }): DraftAssistantResult {
   const projectionByPlayer = new Map(
     input.consensus?.entries.map((entry) => [entry.playerId, entry]) ?? [],
   );
+  const fantasyProsByPlayer = new Map(
+    input.fantasyProsData?.signals.map((signal) => [signal.playerId, signal]) ??
+      [],
+  );
   const candidates: DraftRecommendationCandidate[] = input.availablePlayers.map(
     (player) => {
       const projection = projectionByPlayer.get(player.id);
+      const fantasyPros = fantasyProsByPlayer.get(player.id);
+      const injuryStatus = fantasyPros?.injuryStatus;
       return {
         playerId: player.id,
         fullName: player.fullName,
         position: player.position,
         nflTeam: player.nflTeam,
-        status: player.status,
+        status:
+          injuryStatus && injuryStatus !== "unknown"
+            ? injuryStatus
+            : player.status,
         yahooRank: player.yahooRank,
         yahooAdp: player.yahooAdp,
+        fantasyProsRank: fantasyPros?.rank ?? null,
+        fantasyProsPositionRank: fantasyPros?.positionRank ?? null,
+        fantasyProsTier: fantasyPros?.tier ?? null,
+        fantasyProsAdp: fantasyPros?.adp ?? null,
+        fantasyProsExpertCount: fantasyPros?.expertCount ?? null,
+        fantasyProsInjuryDetails: fantasyPros?.injuryDetails ?? null,
+        fantasyProsNewsHeadline: fantasyPros?.newsHeadline ?? null,
+        fantasyProsNewsSummary: fantasyPros?.newsSummary ?? null,
+        fantasyProsNewsPublishedAt: fantasyPros?.newsPublishedAt ?? null,
         consensusPoints: projection?.consensusPoints ?? null,
         confidence: projection?.confidence ?? null,
         sourceCount: projection?.sourceCount ?? 0,
@@ -145,8 +168,13 @@ export async function loadDraftAssistant(input: {
   picks: DraftPick[];
   keepers: RosterAssignment[];
 }): Promise<DraftAssistantResult> {
+  const [consensus, fantasyProsData] = await Promise.all([
+    projectionSnapshot(input),
+    getLatestFantasyProsDraftData(input.session.season),
+  ]);
   return buildDraftAssistant({
     ...input,
-    consensus: await projectionSnapshot(input),
+    consensus,
+    fantasyProsData,
   });
 }

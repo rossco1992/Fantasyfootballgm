@@ -30,5 +30,6 @@ traceable component factors. It contains no database or provider I/O.
 `draft-recommendation.ts` ranks the active draft pool with a versioned,
 deterministic blend of league-adjusted value, positional scarcity, next-pick
 availability risk, roster fit, projection confidence, and injury penalties.
-Every result includes the component scores and human-readable reasons used by
-the draft-room UI.
+FantasyPros ECR, tiers, ADP, expert depth, injury details, and news remain
+structured inputs alongside Yahoo availability. Every result includes the
+component scores and human-readable reasons used by the draft-room UI.

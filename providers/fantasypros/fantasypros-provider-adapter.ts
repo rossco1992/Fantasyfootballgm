@@ -27,6 +27,7 @@ export const FANTASYPROS_DATASETS = [
   "rankings",
   "projections",
   "injuries",
+  "news",
 ] as const;
 
 export type FantasyProsDatasetName = (typeof FANTASYPROS_DATASETS)[number];
@@ -98,6 +99,11 @@ function datasetUrl(
       params.set("year", String(request.season));
       params.set("week", String(request.week ?? 0));
       params.set("include_probabilities", "true");
+      break;
+    case "news":
+      path = "/nfl/news";
+      params.set("limit", "100");
+      params.set("order_by", "updated");
       break;
   }
   const query = params.toString();
@@ -371,6 +377,45 @@ function injuries(payload: FantasyProsPayload): ProviderRecordCandidate[] {
   });
 }
 
+function newsPublishedAt(row: JsonRecord, fallback: string): string {
+  const raw = stringField(row, "updated", "created");
+  if (!raw) return fallback;
+  const normalized = raw.includes("T") ? raw : `${raw.replace(" ", "T")}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.valueOf()) ? fallback : parsed.toISOString();
+}
+
+function news(payload: FantasyProsPayload): ProviderRecordCandidate[] {
+  const fallback = observedAt(
+    [payload.datasets.news],
+    new Date(0).toISOString(),
+  );
+  return datasetRows(payload.datasets.news, [
+    "items",
+    "news",
+    "results",
+  ]).flatMap((row, index): ProviderRecordCandidate[] => {
+    const id = externalPlayerId(row);
+    const headline = stringField(row, "title", "headline");
+    if (!id || !headline) return [];
+    const publishedAt = newsPublishedAt(row, fallback);
+    return [
+      {
+        recordKey: `news:${stringField(row, "id") ?? `${publishedAt}:${index}`}`,
+        externalPlayerId: id,
+        normalized: {
+          type: "news",
+          headline,
+          summary: stringField(row, "impact", "desc", "description"),
+          publishedAt,
+          url: stringField(row, "link", "url"),
+        },
+        raw: row,
+      },
+    ];
+  });
+}
+
 export class FantasyProsProviderAdapter implements FantasyDataProviderAdapter<FantasyProsPayload> {
   readonly descriptor = FANTASYPROS_PROVIDER_DESCRIPTOR;
 
@@ -444,6 +489,7 @@ export class FantasyProsProviderAdapter implements FantasyDataProviderAdapter<Fa
         ...rankings(payload),
         ...projections(payload, this.scoring),
         ...injuries(payload),
+        ...news(payload),
       ],
       games: [],
     };
