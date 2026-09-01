@@ -113,6 +113,26 @@ describe("draft recommendation service", () => {
         },
       ],
       consensus,
+      fantasyProsData: {
+        snapshotId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        observedAt: new Date("2026-08-30T13:00:00Z"),
+        coverage: [],
+        signals: [
+          {
+            playerId,
+            rank: 4,
+            positionRank: 2,
+            tier: 1,
+            expertCount: 120,
+            adp: 5,
+            injuryStatus: "active",
+            injuryDetails: null,
+            newsHeadline: "Ready for Week 1",
+            newsSummary: "Expected to handle a full workload.",
+            newsPublishedAt: new Date("2026-08-30T12:30:00Z"),
+          },
+        ],
+      },
     });
 
     expect(result).toMatchObject({
@@ -125,6 +145,9 @@ describe("draft recommendation service", () => {
       playerId,
       consensusPoints: 260,
       sourceCount: 2,
+      fantasyProsRank: 4,
+      fantasyProsTier: 1,
+      fantasyProsNewsHeadline: "Ready for Week 1",
     });
   });
 });

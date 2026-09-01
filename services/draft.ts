@@ -24,6 +24,10 @@ import type { RosterAssignment } from "@/domain/roster";
 import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
 import { retrieveManualRoster } from "@/services/roster-setup";
 import { loadDraftAssistant } from "@/services/draft-recommendations";
+import {
+  retrieveProviderFreshness,
+  type ProviderFreshness,
+} from "@/services/provider-ingestion";
 
 export class DraftRoomError extends Error {}
 
@@ -36,6 +40,7 @@ export type DraftRoom = {
   queue: DraftQueueEntry[];
   keepers: RosterAssignment[];
   assistant: DraftAssistantResult | null;
+  fantasyProsFreshness: ProviderFreshness | null;
 };
 
 async function ownedLeague(
@@ -53,9 +58,10 @@ export async function loadDraftRoom(
 ): Promise<DraftRoom> {
   const league = await ownedLeague(userId, leagueId);
   const session = await getDraftSessionForLeague(userId, leagueId);
-  const [players, keepers] = await Promise.all([
+  const [players, keepers, fantasyProsFreshness] = await Promise.all([
     listYahooDraftPlayers(session?.playerPoolSnapshotId ?? null),
     retrieveManualRoster(userId, leagueId),
+    retrieveProviderFreshness("fantasypros"),
   ]);
   if (!session) {
     return {
@@ -67,6 +73,7 @@ export async function loadDraftRoom(
       queue: [],
       keepers: keepers.filter((assignment) => assignment.isKeeper),
       assistant: null,
+      fantasyProsFreshness,
     };
   }
   const [picks, queue] = await Promise.all([
@@ -101,6 +108,7 @@ export async function loadDraftRoom(
     ),
     keepers: keeperAssignments,
     assistant,
+    fantasyProsFreshness,
   };
 }
 

@@ -1,7 +1,7 @@
 import type { LeagueConfiguration } from "@/domain/league-configuration";
 import type { PlayerPosition, PlayerStatus } from "@/domain/player";
 
-export const DRAFT_RECOMMENDATION_VERSION = "draft-recommendation-v1";
+export const DRAFT_RECOMMENDATION_VERSION = "draft-recommendation-v2";
 
 export type DraftRecommendationCandidate = {
   playerId: string;
@@ -11,6 +11,15 @@ export type DraftRecommendationCandidate = {
   status: PlayerStatus;
   yahooRank: number | null;
   yahooAdp: number | null;
+  fantasyProsRank: number | null;
+  fantasyProsPositionRank: number | null;
+  fantasyProsTier: number | null;
+  fantasyProsAdp: number | null;
+  fantasyProsExpertCount: number | null;
+  fantasyProsInjuryDetails: string | null;
+  fantasyProsNewsHeadline: string | null;
+  fantasyProsNewsSummary: string | null;
+  fantasyProsNewsPublishedAt: Date | null;
   consensusPoints: number | null;
   confidence: number | null;
   sourceCount: number;
@@ -38,7 +47,7 @@ export type DraftRecommendation = DraftRecommendationCandidate & {
 
 export type DraftAssistantResult = {
   version: typeof DRAFT_RECOMMENDATION_VERSION;
-  dataMode: "projection_consensus" | "market_only";
+  dataMode: "projection_consensus" | "fantasypros_market" | "market_only";
   currentOverallPick: number;
   nextUserOverallPick: number;
   picksUntilUser: number;
@@ -73,7 +82,12 @@ function normalize(value: number, minimum: number, maximum: number): number {
 }
 
 function marketPick(candidate: DraftRecommendationCandidate): number {
-  const signals = [candidate.yahooRank, candidate.yahooAdp].filter(
+  const signals = [
+    candidate.fantasyProsRank,
+    candidate.fantasyProsAdp,
+    candidate.yahooRank,
+    candidate.yahooAdp,
+  ].filter(
     (value): value is number => value !== null && Number.isFinite(value),
   );
   return signals.length
@@ -155,6 +169,16 @@ function injuryWarning(status: PlayerStatus): string | null {
   return `Player status is ${status.replaceAll("_", " ")}.`;
 }
 
+function recommendationWarning(
+  candidate: DraftRecommendationCandidate,
+): string | null {
+  const status = injuryWarning(candidate.status);
+  if (status && candidate.fantasyProsInjuryDetails) {
+    return `${status} FantasyPros: ${candidate.fantasyProsInjuryDetails}`;
+  }
+  return status;
+}
+
 function availabilityRisk(expectedPick: number, nextUserPick: number): number {
   if (expectedPick >= 999) return 35;
   return clamp(100 / (1 + Math.exp(-(nextUserPick - expectedPick) / 6)));
@@ -188,12 +212,28 @@ function buildReasons(
       `${Math.round(factors.availabilityRisk)}% estimated chance to be gone by your next pick.`,
     );
   }
-  if (candidate.consensusPoints === null) {
+  if (candidate.fantasyProsRank !== null) {
+    const tier = candidate.fantasyProsTier
+      ? ` in tier ${candidate.fantasyProsTier}`
+      : "";
+    reasons.push(
+      `FantasyPros ECR ${candidate.fantasyProsRank}${tier} supports the value.`,
+    );
+  }
+  if (
+    candidate.consensusPoints === null &&
+    candidate.fantasyProsRank === null &&
+    candidate.fantasyProsAdp === null
+  ) {
     const rank = candidate.yahooRank
       ? `Yahoo rank ${candidate.yahooRank}`
       : "Yahoo market order";
     const adp = candidate.yahooAdp ? ` and ADP ${candidate.yahooAdp}` : "";
     reasons.push(`${rank}${adp} drive this market-only recommendation.`);
+  } else if (candidate.consensusPoints === null) {
+    reasons.push(
+      "FantasyPros expert value and market ADP are blended with Yahoo availability.",
+    );
   }
   if (reasons.length === 0) {
     reasons.push("Best remaining combination of market value and roster fit.");
@@ -267,7 +307,14 @@ export function recommendDraftPlayers(input: {
         valueAboveReplacement ?? Math.max(0, 300 - expectedPick),
       scarcityRaw:
         tierDrop ??
-        Math.max(0, nextPeer ? marketPick(nextPeer) - expectedPick : 0),
+        Math.max(
+          candidate.fantasyProsTier !== null &&
+            nextPeer?.fantasyProsTier !== null &&
+            nextPeer?.fantasyProsTier !== undefined
+            ? (nextPeer.fantasyProsTier - candidate.fantasyProsTier) * 15
+            : 0,
+          nextPeer ? marketPick(nextPeer) - expectedPick : 0,
+        ),
     };
   });
 
@@ -296,7 +343,12 @@ export function recommendDraftPlayers(input: {
           input.league,
           input.currentOverallPick,
         ),
-        confidence: round((candidate.confidence ?? 0.35) * 100),
+        confidence: round(
+          (candidate.confidence ??
+            (candidate.fantasyProsExpertCount
+              ? Math.min(0.75, 0.45 + candidate.fantasyProsExpertCount / 500)
+              : 0.35)) * 100,
+        ),
         injuryPenalty: injuryPenalty(candidate.status),
       };
       const score = round(
@@ -315,7 +367,7 @@ export function recommendDraftPlayers(input: {
         score,
         factors,
         reasons: buildReasons(candidate, factors),
-        warning: injuryWarning(candidate.status),
+        warning: recommendationWarning(candidate),
       };
     })
     .sort(
@@ -342,7 +394,15 @@ export function recommendDraftPlayers(input: {
     version: DRAFT_RECOMMENDATION_VERSION,
     dataMode: candidates.some((candidate) => candidate.consensusPoints !== null)
       ? "projection_consensus"
-      : "market_only",
+      : candidates.some(
+            (candidate) =>
+              candidate.fantasyProsRank !== null ||
+              candidate.fantasyProsAdp !== null ||
+              candidate.fantasyProsInjuryDetails !== null ||
+              candidate.fantasyProsNewsHeadline !== null,
+          )
+        ? "fantasypros_market"
+        : "market_only",
     currentOverallPick: input.currentOverallPick,
     nextUserOverallPick: input.nextUserOverallPick,
     picksUntilUser: Math.max(

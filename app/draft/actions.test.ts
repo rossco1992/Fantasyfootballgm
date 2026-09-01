@@ -2,16 +2,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearDraftBoardAction,
+  refreshDraftFantasyProsAction,
   renameDraftTeamsAction,
   uploadYahooPlayersAction,
 } from "@/app/draft/actions";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { importCsvBatch } from "@/services/csv-import";
+import { refreshFantasyProsData } from "@/services/fantasypros-refresh";
 import {
   clearDraftBoard,
   renameDraftTeams,
   startDraftRoom,
 } from "@/services/draft";
+import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
+import { generateProjectionConsensus } from "@/services/projection-consensus";
+import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 
 const { redirect, revalidatePath } = vi.hoisted(() => ({
   redirect: vi.fn((path: string) => {
@@ -27,6 +32,15 @@ vi.mock("@/services/csv-import", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/csv-import")>();
   return { ...actual, importCsvBatch: vi.fn() };
 });
+vi.mock("@/services/fantasypros-refresh", () => ({
+  refreshFantasyProsData: vi.fn(),
+}));
+vi.mock("@/services/league-configurations", () => ({
+  retrieveLeagueConfigurationById: vi.fn(),
+}));
+vi.mock("@/services/projection-consensus", () => ({
+  generateProjectionConsensus: vi.fn(),
+}));
 vi.mock("@/services/draft", () => ({
   clearDraftBoard: vi.fn(),
   queueDraftPlayer: vi.fn(),
@@ -75,6 +89,44 @@ describe("Yahoo draft upload action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(requireAuthenticatedUser).mockResolvedValue(user);
+  });
+
+  it("refreshes every FantasyPros draft dataset from the draft room", async () => {
+    const league = {
+      ...DEFAULT_LEAGUE_CONFIGURATION,
+      id: "44444444-4444-4444-8444-444444444444",
+      userId: user.id,
+      scoringPreset: "half_ppr" as const,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    };
+    vi.mocked(retrieveLeagueConfigurationById).mockResolvedValue(league);
+    vi.mocked(refreshFantasyProsData).mockResolvedValue({
+      ...outcome,
+      recordsImported: 500,
+      playerIdentitiesImported: 200,
+    });
+    const data = new FormData();
+    data.set("leagueId", league.id);
+    data.set("season", "2026");
+    data.set("returnTab", "queue");
+
+    await expect(refreshDraftFantasyProsAction(data)).rejects.toThrow(
+      /REDIRECT:\/draft\?tab=queue&message=FantasyPros%20refreshed/,
+    );
+    expect(refreshFantasyProsData).toHaveBeenCalledWith({
+      season: 2026,
+      week: null,
+      scoring: "half_ppr",
+    });
+    expect(generateProjectionConsensus).toHaveBeenCalledWith({
+      leagueId: league.id,
+      userId: user.id,
+      season: 2026,
+      week: null,
+      horizon: "preseason",
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/draft");
   });
 
   it("starts the draft room after importing Yahoo players", async () => {

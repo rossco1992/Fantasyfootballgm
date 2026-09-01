@@ -31,6 +31,15 @@ function player(
     status: "active",
     yahooRank: rank,
     yahooAdp: rank,
+    fantasyProsRank: null,
+    fantasyProsPositionRank: null,
+    fantasyProsTier: null,
+    fantasyProsAdp: null,
+    fantasyProsExpertCount: null,
+    fantasyProsInjuryDetails: null,
+    fantasyProsNewsHeadline: null,
+    fantasyProsNewsSummary: null,
+    fantasyProsNewsPublishedAt: null,
     consensusPoints: points,
     confidence: points === null ? null : 0.8,
     sourceCount: points === null ? 0 : 2,
@@ -116,6 +125,54 @@ describe("draft recommendation engine", () => {
     expect(result.recommendations[0]?.reasons.join(" ")).toContain(
       "market-only recommendation",
     );
+  });
+
+  it("uses FantasyPros ECR, tiers, ADP, and expert depth without projections", () => {
+    const result = recommendDraftPlayers({
+      candidates: [
+        player(
+          "00000000-0000-4000-8000-000000000001",
+          "Yahoo Favorite",
+          "WR",
+          null,
+          1,
+          {
+            fantasyProsRank: 20,
+            fantasyProsAdp: 18,
+            fantasyProsTier: 3,
+            fantasyProsExpertCount: 100,
+          },
+        ),
+        player(
+          "00000000-0000-4000-8000-000000000002",
+          "Expert Favorite",
+          "WR",
+          null,
+          5,
+          {
+            fantasyProsRank: 2,
+            fantasyProsAdp: 3,
+            fantasyProsTier: 1,
+            fantasyProsExpertCount: 150,
+          },
+        ),
+      ],
+      league,
+      rosterPositionCounts: {},
+      currentOverallPick: 1,
+      nextUserOverallPick: 12,
+    });
+
+    expect(result.dataMode).toBe("fantasypros_market");
+    expect(result.recommendations[0]).toMatchObject({
+      fullName: "Expert Favorite",
+      fantasyProsRank: 2,
+      fantasyProsTier: 1,
+    });
+    expect(result.recommendations[0]?.reasons.join(" ")).toContain(
+      "FantasyPros ECR 2 in tier 1",
+    );
+    expect(result.recommendations[0]?.factors.confidence).toBeGreaterThan(35);
   });
 
   it("penalizes unavailable and seriously injured players", () => {
