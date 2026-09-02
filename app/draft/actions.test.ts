@@ -5,6 +5,7 @@ import {
   clearDraftBoardAction,
   refreshDraftFantasyProsAction,
   renameDraftTeamsAction,
+  savePersonalDraftSettingsAction,
   uploadYahooPlayersAction,
 } from "@/app/draft/actions";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
@@ -14,6 +15,7 @@ import {
   assignDraftKeeperSlots,
   clearDraftBoard,
   renameDraftTeams,
+  savePersonalDraftSettings,
   startDraftRoom,
 } from "@/services/draft";
 import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
@@ -44,11 +46,13 @@ vi.mock("@/services/projection-consensus", () => ({
   generateProjectionConsensus: vi.fn(),
 }));
 vi.mock("@/services/draft", () => ({
+  DraftRoomError: class DraftRoomError extends Error {},
   assignDraftKeeperSlots: vi.fn(),
   clearDraftBoard: vi.fn(),
   queueDraftPlayer: vi.fn(),
   recordNextDraftPick: vi.fn(),
   renameDraftTeams: vi.fn(),
+  savePersonalDraftSettings: vi.fn(),
   startDraftRoom: vi.fn(),
   undoLastDraftPick: vi.fn(),
   unqueueDraftPlayer: vi.fn(),
@@ -203,6 +207,25 @@ describe("Yahoo draft upload action", () => {
       "44444444-4444-4444-8444-444444444444",
       { "keeper-a": 3 },
     );
+  });
+
+  it("saves the user's personal draft setup", async () => {
+    const data = new FormData();
+    data.set("leagueId", "44444444-4444-4444-8444-444444444444");
+    data.set("draftPosition", "3");
+    data.set("keeperPlayerId", "player-a");
+    data.set("keeperRound", "5");
+
+    await expect(savePersonalDraftSettingsAction(data)).rejects.toThrow(
+      "REDIRECT:/draft?tab=available&message=Draft%20settings%20saved.",
+    );
+    expect(savePersonalDraftSettings).toHaveBeenCalledWith({
+      userId: user.id,
+      leagueId: "44444444-4444-4444-8444-444444444444",
+      draftPosition: 3,
+      keeperPlayerId: "player-a",
+      keeperRound: 5,
+    });
   });
 
   it("clears the draft board", async () => {

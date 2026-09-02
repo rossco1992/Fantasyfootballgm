@@ -6,11 +6,13 @@ import { redirect } from "next/navigation";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { refreshFantasyProsData } from "@/services/fantasypros-refresh";
 import {
+  DraftRoomError,
   assignDraftKeeperSlots,
   clearDraftBoard,
   queueDraftPlayer,
   recordNextDraftPick,
   renameDraftTeams,
+  savePersonalDraftSettings,
   startDraftRoom,
   undoLastDraftPick,
   unqueueDraftPlayer,
@@ -215,6 +217,31 @@ export async function assignDraftKeeperSlotsAction(formData: FormData) {
   }
   revalidatePath("/draft");
   redirect(draftUrl("message", "Keeper draft slots saved."));
+}
+
+export async function savePersonalDraftSettingsAction(formData: FormData) {
+  const user = await requireAuthenticatedUser();
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const keeperPlayerId = String(formData.get("keeperPlayerId") ?? "");
+  const rawKeeperRound = String(formData.get("keeperRound") ?? "");
+  try {
+    await savePersonalDraftSettings({
+      userId: user.id,
+      leagueId,
+      draftPosition: Number(formData.get("draftPosition")),
+      keeperPlayerId: keeperPlayerId || null,
+      keeperRound: rawKeeperRound ? Number(rawKeeperRound) : null,
+    });
+  } catch (error) {
+    const message =
+      error instanceof DraftRoomError
+        ? error.message
+        : "Draft settings could not be saved.";
+    redirect(draftUrl("error", message));
+  }
+  revalidatePath("/dashboard");
+  revalidatePath("/draft");
+  redirect(draftUrl("message", "Draft settings saved."));
 }
 
 export async function undoDraftPickAction(formData: FormData) {
