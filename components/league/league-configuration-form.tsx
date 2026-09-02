@@ -200,7 +200,7 @@ export function LeagueConfigurationForm({
       </fieldset>
 
       <button
-        className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="min-h-11 touch-manipulation rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={pending}
         type="submit"
       >
