@@ -55,7 +55,6 @@ export function LeagueConfigurationForm({
 
   return (
     <form action={formAction} className="space-y-8">
-      <input name="mode" type="hidden" value={isEditing ? "edit" : "create"} />
       {!pending && state.message ? (
         <p
           role={state.status === "error" ? "alert" : "status"}
