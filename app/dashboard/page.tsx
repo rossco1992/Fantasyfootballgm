@@ -50,7 +50,7 @@ export default async function DashboardPage({
         <div className="flex flex-wrap gap-2">
           {configuration ? (
             <Link
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              className="inline-flex min-h-11 touch-manipulation items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
               href="/draft"
             >
               Open draft room

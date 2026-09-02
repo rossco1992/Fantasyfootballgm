@@ -5,11 +5,15 @@ import { INITIAL_LEAGUE_FORM_STATE } from "@/app/league/form-state";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { saveLeagueConfiguration } from "@/services/league-configurations";
 
-const { revalidatePath } = vi.hoisted(() => ({
+const { redirect, revalidatePath } = vi.hoisted(() => ({
+  redirect: vi.fn((path: string) => {
+    throw new Error(`REDIRECT:${path}`);
+  }),
   revalidatePath: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/lib/auth/session", () => ({ requireAuthenticatedUser: vi.fn() }));
 vi.mock("@/services/league-configurations", () => ({
   saveLeagueConfiguration: vi.fn(),
@@ -86,6 +90,19 @@ describe("league configuration action", () => {
     });
     expect(saveLeagueConfiguration).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("opens draft setup immediately after creating a league", async () => {
+    vi.mocked(saveLeagueConfiguration).mockResolvedValue({} as never);
+    const formData = validLeagueFormData();
+    formData.set("mode", "create");
+
+    await expect(
+      saveLeagueConfigurationAction(INITIAL_LEAGUE_FORM_STATE, formData),
+    ).rejects.toThrow("REDIRECT:/draft");
+
+    expect(revalidatePath).toHaveBeenCalledWith("/dashboard");
+    expect(revalidatePath).toHaveBeenCalledWith("/draft");
   });
 
   it("returns a recoverable error when persistence fails", async () => {
