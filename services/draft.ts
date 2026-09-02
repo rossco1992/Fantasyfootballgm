@@ -12,6 +12,7 @@ import {
   updateDraftTeamNames,
   upsertDraftSession,
 } from "@/db/repositories/draft";
+import { upsertDraftUserKeeper } from "@/db/repositories/roster-assignments";
 import {
   type DraftKeeperReservation,
   type DraftPick,
@@ -25,7 +26,10 @@ import {
 import type { DraftAssistantResult } from "@/domain/draft-recommendation";
 import type { LeagueConfiguration } from "@/domain/league-configuration";
 import type { RosterAssignment } from "@/domain/roster";
-import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
+import {
+  retrieveLeagueConfigurationById,
+  saveLeagueConfiguration,
+} from "@/services/league-configurations";
 import { retrieveManualRoster } from "@/services/roster-setup";
 import { loadDraftAssistant } from "@/services/draft-recommendations";
 import {
@@ -221,6 +225,102 @@ export async function assignDraftKeeperSlots(
     keeperTeamSlots[keeperId] = slot;
   }
   await updateDraftKeeperTeamSlots(userId, leagueId, keeperTeamSlots);
+}
+
+export async function savePersonalDraftSettings(input: {
+  userId: string;
+  leagueId: string;
+  draftPosition: number;
+  keeperPlayerId: string | null;
+  keeperRound: number | null;
+}): Promise<void> {
+  const league = await ownedLeague(input.userId, input.leagueId);
+  const session = await getDraftSessionForLeague(input.userId, input.leagueId);
+  if (!session) throw new DraftRoomError("Start the draft room first.");
+  const picks = await listDraftPicks(session.id);
+  if (picks.length > 0) {
+    throw new DraftRoomError(
+      "Clear the draft board before changing draft position or keeper settings.",
+    );
+  }
+  if (
+    !Number.isInteger(input.draftPosition) ||
+    input.draftPosition < 1 ||
+    input.draftPosition > league.teamCount
+  ) {
+    throw new DraftRoomError("Draft position must be inside the league.");
+  }
+
+  const nextLeague = {
+    name: league.name,
+    teamCount: league.teamCount,
+    leagueFormat: league.leagueFormat,
+    maxKeepersPerTeam: league.maxKeepersPerTeam,
+    draftType: league.draftType,
+    draftPosition: input.draftPosition,
+    scoringPreset: league.scoringPreset,
+    rosterSlots: league.rosterSlots,
+  };
+  const teamNames = { ...session.teamNames };
+  if (input.draftPosition !== league.draftPosition) {
+    const myTeamName = teamNames[String(league.draftPosition)] ?? "My Team";
+    const otherTeamName =
+      teamNames[String(input.draftPosition)] ?? `Team ${input.draftPosition}`;
+    teamNames[String(league.draftPosition)] = otherTeamName;
+    teamNames[String(input.draftPosition)] = myTeamName;
+  }
+
+  if (league.leagueFormat === "redraft") {
+    await saveLeagueConfiguration(input.userId, nextLeague);
+    await updateDraftKeeperTeamSlots(input.userId, input.leagueId, {});
+    await updateDraftTeamNames(input.userId, input.leagueId, teamNames);
+    return;
+  }
+
+  const totalRounds = totalDraftRounds(league);
+  if (
+    !input.keeperPlayerId ||
+    input.keeperRound === null ||
+    !Number.isInteger(input.keeperRound) ||
+    input.keeperRound < 1 ||
+    input.keeperRound > totalRounds
+  ) {
+    throw new DraftRoomError("Select your keeper and its draft round.");
+  }
+  const player = (
+    await listYahooDraftPlayers(session.playerPoolSnapshotId)
+  ).find((candidate) => candidate.id === input.keeperPlayerId);
+  if (!player) throw new DraftRoomError("The selected keeper was not found.");
+  const myTeamName =
+    teamNames[String(input.draftPosition)] ??
+    teamNames[String(league.draftPosition)] ??
+    "My Team";
+  const keeperAssignmentId = await upsertDraftUserKeeper(
+    input.leagueId,
+    input.userId,
+    player.id,
+    myTeamName,
+    session.season,
+    input.keeperRound,
+  );
+
+  const keeperTeamSlots = Object.fromEntries(
+    Object.entries(session.keeperTeamSlots).filter(
+      ([assignmentId, slot]) =>
+        assignmentId !== keeperAssignmentId &&
+        slot !== league.draftPosition &&
+        slot !== input.draftPosition,
+    ),
+  );
+  keeperTeamSlots[keeperAssignmentId] = input.draftPosition;
+
+  await saveLeagueConfiguration(input.userId, nextLeague);
+  await updateDraftKeeperTeamSlots(
+    input.userId,
+    input.leagueId,
+    keeperTeamSlots,
+  );
+  await updateDraftTeamNames(input.userId, input.leagueId, teamNames);
 }
 
 export async function startDraftRoom(

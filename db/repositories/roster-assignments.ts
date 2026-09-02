@@ -1,4 +1,4 @@
-import { query } from "@/db/client";
+import { query, withTransaction } from "@/db/client";
 import type {
   ManualRosterPlayerInput,
   RosterAssignment,
@@ -127,4 +127,77 @@ export async function deleteRosterAssignment(
     [assignmentId, userId],
   );
   return result.rowCount === 1;
+}
+
+export async function upsertDraftUserKeeper(
+  leagueId: string,
+  userId: string,
+  playerId: string,
+  fantasyTeamName: string,
+  keeperSeason: number,
+  keeperRound: number,
+): Promise<string> {
+  return withTransaction(async (client) => {
+    await client.query(
+      `update league_roster_assignments assignment
+          set is_keeper = false,
+              original_draft_season = null,
+              original_draft_round = null,
+              keeper_season = null,
+              keeper_cost_round = null,
+              updated_at = now()
+        where assignment.league_id = $1
+          and assignment.player_id <> $3
+          and exists (
+            select 1 from league_configurations league
+             where league.id = assignment.league_id and league.user_id = $2
+          )
+          and (
+            lower(assignment.fantasy_team_name) = lower($4)
+            or assignment.id in (
+              select mapping.key::uuid
+                from draft_sessions session
+                join league_configurations league
+                  on league.id = session.league_id
+                cross join lateral
+                  jsonb_each_text(session.keeper_team_slots) mapping
+               where session.league_id = $1
+                 and league.user_id = $2
+                 and mapping.value::integer = league.draft_position
+            )
+          )`,
+      [leagueId, userId, playerId, fantasyTeamName],
+    );
+    const result = await client.query<{ id: string }>(
+      `insert into league_roster_assignments (
+         league_id, player_id, fantasy_team_name, acquisition_type, is_keeper,
+         original_draft_season, original_draft_round, keeper_season,
+         keeper_cost_round
+       )
+       select league.id, $3, $4, 'drafted', true, $5 - 1, $6, $5, $6
+         from league_configurations league
+        where league.id = $1 and league.user_id = $2
+       on conflict (league_id, player_id) do update set
+         fantasy_team_name = excluded.fantasy_team_name,
+         acquisition_type = excluded.acquisition_type,
+         is_keeper = true,
+         original_draft_season = excluded.original_draft_season,
+         original_draft_round = excluded.original_draft_round,
+         keeper_season = excluded.keeper_season,
+         keeper_cost_round = excluded.keeper_cost_round,
+         updated_at = now()
+       returning id`,
+      [
+        leagueId,
+        userId,
+        playerId,
+        fantasyTeamName,
+        keeperSeason,
+        keeperRound,
+      ],
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error("The draft keeper could not be saved.");
+    return row.id;
+  });
 }

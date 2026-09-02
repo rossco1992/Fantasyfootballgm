@@ -10,6 +10,7 @@ import {
   updateDraftKeeperTeamSlots,
   updateDraftTeamNames,
 } from "@/db/repositories/draft";
+import { upsertDraftUserKeeper } from "@/db/repositories/roster-assignments";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import {
   clearDraftBoard,
@@ -17,8 +18,12 @@ import {
   loadDraftRoom,
   recordNextDraftPick,
   renameDraftTeams,
+  savePersonalDraftSettings,
 } from "@/services/draft";
-import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
+import {
+  retrieveLeagueConfigurationById,
+  saveLeagueConfiguration,
+} from "@/services/league-configurations";
 import { retrieveManualRoster } from "@/services/roster-setup";
 import { loadDraftAssistant } from "@/services/draft-recommendations";
 import { retrieveProviderFreshness } from "@/services/provider-ingestion";
@@ -37,8 +42,12 @@ vi.mock("@/db/repositories/draft", () => ({
   updateDraftKeeperTeamSlots: vi.fn(),
   upsertDraftSession: vi.fn(),
 }));
+vi.mock("@/db/repositories/roster-assignments", () => ({
+  upsertDraftUserKeeper: vi.fn(),
+}));
 vi.mock("@/services/league-configurations", () => ({
   retrieveLeagueConfigurationById: vi.fn(),
+  saveLeagueConfiguration: vi.fn(),
 }));
 vi.mock("@/services/roster-setup", () => ({
   retrieveManualRoster: vi.fn(),
@@ -188,6 +197,7 @@ describe("live draft service", () => {
 
   it("binds availability to the session upload and removes keepers", async () => {
     const keeperId = "55555555-5555-4555-8555-555555555555";
+    const keeperAssignmentId = "77777777-7777-4777-8777-777777777777";
     const snapshotId = "66666666-6666-4666-8666-666666666666";
     vi.mocked(getDraftSessionForLeague).mockResolvedValue({
       id: sessionId,
@@ -195,7 +205,7 @@ describe("live draft service", () => {
       season: 2026,
       status: "active",
       teamNames: {},
-      keeperTeamSlots: {},
+      keeperTeamSlots: { [keeperAssignmentId]: 1 },
       playerPoolSnapshotId: snapshotId,
       createdAt: new Date("2026-08-30T12:00:00Z"),
       updatedAt: new Date("2026-08-30T12:00:00Z"),
@@ -230,7 +240,7 @@ describe("live draft service", () => {
     vi.mocked(listDraftQueue).mockResolvedValue([]);
     vi.mocked(retrieveManualRoster).mockResolvedValue([
       {
-        id: "77777777-7777-4777-8777-777777777777",
+        id: keeperAssignmentId,
         leagueId,
         playerId: keeperId,
         fullName: "Keeper Receiver",
@@ -256,7 +266,15 @@ describe("live draft service", () => {
       playerId,
     ]);
     expect(loadDraftAssistant).toHaveBeenCalledWith(
-      expect.objectContaining({ availablePlayers: room.availablePlayers }),
+      expect.objectContaining({
+        availablePlayers: room.availablePlayers,
+        keeperReservations: [
+          expect.objectContaining({
+            fantasyTeamSlot: 1,
+            keeper: expect.objectContaining({ playerId: keeperId }),
+          }),
+        ],
+      }),
     );
   });
 
@@ -319,6 +337,61 @@ describe("live draft service", () => {
 
     expect(updateDraftKeeperTeamSlots).toHaveBeenCalledWith(userId, leagueId, {
       [keeperId]: 3,
+    });
+  });
+
+  it("saves the user's draft position, keeper, and keeper round together", async () => {
+    const keeperId = "77777777-7777-4777-8777-777777777777";
+    vi.mocked(retrieveLeagueConfigurationById).mockResolvedValue({
+      ...DEFAULT_LEAGUE_CONFIGURATION,
+      id: leagueId,
+      userId,
+      leagueFormat: "keeper",
+      maxKeepersPerTeam: 1,
+      draftPosition: 1,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(getDraftSessionForLeague).mockResolvedValue({
+      id: sessionId,
+      leagueId,
+      season: 2026,
+      status: "active",
+      teamNames: {},
+      keeperTeamSlots: {},
+      playerPoolSnapshotId: null,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(listDraftPicks).mockResolvedValue([]);
+    vi.mocked(upsertDraftUserKeeper).mockResolvedValue(keeperId);
+
+    await savePersonalDraftSettings({
+      userId,
+      leagueId,
+      draftPosition: 3,
+      keeperPlayerId: playerId,
+      keeperRound: 5,
+    });
+
+    expect(saveLeagueConfiguration).toHaveBeenCalledWith(
+      userId,
+      expect.objectContaining({ draftPosition: 3 }),
+    );
+    expect(upsertDraftUserKeeper).toHaveBeenCalledWith(
+      leagueId,
+      userId,
+      playerId,
+      "My Team",
+      2026,
+      5,
+    );
+    expect(updateDraftKeeperTeamSlots).toHaveBeenCalledWith(userId, leagueId, {
+      [keeperId]: 3,
+    });
+    expect(updateDraftTeamNames).toHaveBeenCalledWith(userId, leagueId, {
+      "1": "Team 3",
+      "3": "My Team",
     });
   });
 
