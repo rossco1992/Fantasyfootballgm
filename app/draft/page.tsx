@@ -15,6 +15,9 @@ export default async function DraftPage({
     tab?: string;
     message?: string;
     error?: string;
+    csvRecords?: string;
+    fantasyProsRecords?: string;
+    fantasyProsStatus?: string;
   }>;
 }) {
   const [user, params] = await Promise.all([
@@ -51,6 +54,19 @@ export default async function DraftPage({
       </header>
       <DraftRoomView
         activeTab={activeTab}
+        dataUpdate={
+          params.csvRecords
+            ? {
+                csvRecords: Number(params.csvRecords) || 0,
+                fantasyProsRecords: Number(params.fantasyProsRecords) || 0,
+                fantasyProsStatus:
+                  params.fantasyProsStatus === "current" ||
+                  params.fantasyProsStatus === "partial"
+                    ? params.fantasyProsStatus
+                    : "failed",
+              }
+            : undefined
+        }
         error={params.error}
         message={params.message}
         room={room}
