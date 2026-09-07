@@ -265,8 +265,8 @@ function InitialDraftDataPanel({ room }: { room: DraftRoom }) {
       </p>
       <h2 className="mt-1 text-xl font-bold">Load your player pool</h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600 dark:text-neutral-300">
-        Upload one ranked player CSV. The draft helper opens as soon as the CSV
-        is ready; FantasyPros is optional.
+        Upload one or two ranked player CSVs. Two selected files are combined,
+        and the draft helper opens as soon as they are ready.
       </p>
       <DraftUploadForm
         action={uploadYahooPlayersAction}
@@ -297,7 +297,7 @@ function DraftDataControls({
       </summary>
       <div className="mt-4 grid gap-5 border-t border-neutral-200 pt-4 md:grid-cols-2 dark:border-neutral-800">
         <div>
-          <p className="text-sm font-bold">Replace player CSV</p>
+          <p className="text-sm font-bold">Update player CSVs</p>
           <DraftUploadForm
             action={replaceDraftPlayerCsvAction}
             leagueId={room.league.id}
@@ -315,8 +315,8 @@ function DraftDataControls({
             {coverage.total} ({percent(coverage.projections)}%)
           </p>
           <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-            Ready requires fresh 90% coverage in all three. Partial refreshes
-            do not replace the last successful snapshot.
+            Ready requires fresh 90% coverage in all three. Partial refreshes do
+            not replace the last successful snapshot.
           </p>
           <div className="mt-3">
             <FantasyProsRefreshForm

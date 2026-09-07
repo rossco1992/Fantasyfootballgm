@@ -17,7 +17,11 @@ import {
   undoLastDraftPick,
   unqueueDraftPlayer,
 } from "@/services/draft";
-import { MAX_CSV_BYTES, importCsvBatch } from "@/services/csv-import";
+import {
+  MAX_CSV_BYTES,
+  MAX_CSV_TOTAL_BYTES,
+  importCsvBatch,
+} from "@/services/csv-import";
 import { retrieveLeagueConfigurationById } from "@/services/league-configurations";
 import { generateProjectionConsensus } from "@/services/projection-consensus";
 
@@ -39,31 +43,46 @@ function draftUrl(
 class DraftPlayerCsvError extends Error {}
 
 async function importDraftPlayerCsv(formData: FormData) {
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new DraftPlayerCsvError("Choose a player CSV to continue.");
+  const files = formData
+    .getAll("files")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  if (files.length === 0) {
+    throw new DraftPlayerCsvError(
+      "Choose at least one player CSV to continue.",
+    );
   }
-  if (!file.name.toLowerCase().endsWith(".csv")) {
-    throw new DraftPlayerCsvError("Player data must be a CSV file.");
+  if (files.length > 2) {
+    throw new DraftPlayerCsvError("Choose no more than 2 player CSVs at once.");
   }
-  if (file.size > MAX_CSV_BYTES) {
-    throw new DraftPlayerCsvError("The player CSV must be 2 MB or smaller.");
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      throw new DraftPlayerCsvError(`${file.name} must be a CSV file.`);
+    }
+    if (file.size > MAX_CSV_BYTES) {
+      throw new DraftPlayerCsvError(`${file.name} must be 2 MB or smaller.`);
+    }
+  }
+  if (
+    files.reduce((total, file) => total + file.size, 0) > MAX_CSV_TOTAL_BYTES
+  ) {
+    throw new DraftPlayerCsvError("The 2 player CSVs must total 4 MB or less.");
   }
 
   let result: Awaited<ReturnType<typeof importCsvBatch>>;
   try {
+    const observedAt = new Date().toISOString();
     result = await importCsvBatch({
       provider: "yahoo",
       season: Number(formData.get("season")),
       week: null,
       scoring: String(formData.get("scoring") ?? "ppr"),
-      files: [
-        {
+      files: await Promise.all(
+        files.map(async (file) => ({
           csv: await file.text(),
           fileName: file.name,
-          observedAt: new Date().toISOString(),
-        },
-      ],
+          observedAt,
+        })),
+      ),
     });
   } catch {
     throw new DraftPlayerCsvError(
@@ -71,21 +90,29 @@ async function importDraftPlayerCsv(formData: FormData) {
     );
   }
 
-  const importedFile = result.files[0];
-  if (importedFile?.status !== "imported") {
+  const failedFiles = result.files.filter((file) => file.status === "failed");
+  const importedFiles = result.files.filter(
+    (file) => file.status === "imported",
+  );
+  if (failedFiles.length > 0 || importedFiles.length !== files.length) {
     throw new DraftPlayerCsvError(
-      "The player CSV needs Player, Position (or Pos), and Rank (or ADP) columns.",
+      `Every CSV needs Player, Position (or Pos), and Rank, ADP, or projection columns. Check: ${failedFiles.map((file) => file.fileName).join(", ") || "the selected files"}.`,
     );
   }
-  if (!importedFile.outcome.snapshotId) {
+  const anchorSnapshotId = importedFiles[0]?.outcome.snapshotId;
+  if (!anchorSnapshotId) {
     throw new DraftPlayerCsvError(
       "The players imported without a usable draft snapshot. Try the upload again.",
     );
   }
 
   return {
-    recordsImported: importedFile.outcome.recordsImported,
-    snapshotId: importedFile.outcome.snapshotId,
+    filesImported: importedFiles.length,
+    recordsImported: importedFiles.reduce(
+      (total, file) => total + file.outcome.recordsImported,
+      0,
+    ),
+    snapshotId: anchorSnapshotId,
   };
 }
 
@@ -119,7 +146,12 @@ export async function uploadYahooPlayersAction(
     );
   }
   revalidatePath("/draft");
-  redirect(draftUrl("message", "Player CSV loaded. Your draft room is ready."));
+  redirect(
+    draftUrl(
+      "message",
+      `${playerCsv.filesImported} CSV file${playerCsv.filesImported === 1 ? "" : "s"} loaded. Your draft room is ready.`,
+    ),
+  );
 }
 
 export async function replaceDraftPlayerCsvAction(
@@ -149,7 +181,7 @@ export async function replaceDraftPlayerCsvAction(
   redirect(
     draftUrl(
       "message",
-      `Player CSV updated · ${playerCsv.recordsImported} players.`,
+      `${playerCsv.filesImported} CSV file${playerCsv.filesImported === 1 ? "" : "s"} loaded · ${playerCsv.recordsImported} records.`,
       returnTab,
     ),
   );

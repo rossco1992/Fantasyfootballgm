@@ -21,9 +21,9 @@ follow when implementing them.
   the same round as the prior year's draft round. Waiver/free-agent cost stays
   configurable until the league rule is confirmed.
 - Use a platform-independent domain model and provider adapters.
-- In the draft room, use an uploaded ranked player CSV as the dependable base
-  player pool. Treat the authenticated server-side FantasyPros refresh as an
-  optional, non-blocking enhancement.
+- In the draft room, combine up to two ranked player CSVs into the dependable
+  base player pool. Treat the authenticated server-side FantasyPros refresh as
+  an optional, non-blocking enhancement.
 - Do not build multi-league support, auctions, trades, write-back, public
   onboarding, billing, or commercial licensing in this MVP.
 
