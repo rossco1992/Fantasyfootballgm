@@ -12,7 +12,10 @@ import {
   updateDraftTeamNames,
   upsertDraftSession,
 } from "@/db/repositories/draft";
-import { upsertDraftUserKeeper } from "@/db/repositories/roster-assignments";
+import {
+  clearDraftUserKeepers,
+  upsertDraftUserKeeper,
+} from "@/db/repositories/roster-assignments";
 import {
   type DraftKeeperReservation,
   type DraftPick,
@@ -316,6 +319,32 @@ export async function savePersonalDraftSettings(input: {
   if (league.leagueFormat === "redraft") {
     await saveLeagueConfiguration(input.userId, nextLeague);
     await updateDraftKeeperTeamSlots(input.userId, input.leagueId, {});
+    await updateDraftTeamNames(input.userId, input.leagueId, teamNames);
+    return;
+  }
+
+  if (!input.keeperPlayerId && input.keeperRound === null) {
+    const keepers = (await retrieveManualRoster(input.userId, input.leagueId))
+      .filter(
+        (keeper) =>
+          keeper.isKeeper &&
+          (session.keeperTeamSlots[keeper.id] === league.draftPosition ||
+            keeper.fantasyTeamName.toLowerCase() === "my team"),
+      )
+      .map((keeper) => keeper.id);
+    const keeperIds = new Set(keepers);
+    const keeperTeamSlots = Object.fromEntries(
+      Object.entries(session.keeperTeamSlots).filter(
+        ([assignmentId]) => !keeperIds.has(assignmentId),
+      ),
+    );
+    await clearDraftUserKeepers(input.leagueId, input.userId, keepers);
+    await saveLeagueConfiguration(input.userId, nextLeague);
+    await updateDraftKeeperTeamSlots(
+      input.userId,
+      input.leagueId,
+      keeperTeamSlots,
+    );
     await updateDraftTeamNames(input.userId, input.leagueId, teamNames);
     return;
   }

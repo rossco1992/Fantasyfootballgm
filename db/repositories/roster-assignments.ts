@@ -201,3 +201,27 @@ export async function upsertDraftUserKeeper(
     return row.id;
   });
 }
+
+export async function clearDraftUserKeepers(
+  leagueId: string,
+  userId: string,
+  assignmentIds: string[],
+): Promise<void> {
+  if (assignmentIds.length === 0) return;
+  await query(
+    `update league_roster_assignments assignment
+        set is_keeper = false,
+            original_draft_season = null,
+            original_draft_round = null,
+            keeper_season = null,
+            keeper_cost_round = null,
+            updated_at = now()
+      where assignment.league_id = $1
+        and assignment.id = any($3::uuid[])
+        and exists (
+          select 1 from league_configurations league
+           where league.id = assignment.league_id and league.user_id = $2
+        )`,
+    [leagueId, userId, assignmentIds],
+  );
+}

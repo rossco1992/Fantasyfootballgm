@@ -10,7 +10,10 @@ import {
   updateDraftKeeperTeamSlots,
   updateDraftTeamNames,
 } from "@/db/repositories/draft";
-import { upsertDraftUserKeeper } from "@/db/repositories/roster-assignments";
+import {
+  clearDraftUserKeepers,
+  upsertDraftUserKeeper,
+} from "@/db/repositories/roster-assignments";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import {
   clearDraftBoard,
@@ -45,6 +48,7 @@ vi.mock("@/db/repositories/draft", () => ({
   upsertDraftSession: vi.fn(),
 }));
 vi.mock("@/db/repositories/roster-assignments", () => ({
+  clearDraftUserKeepers: vi.fn(),
   upsertDraftUserKeeper: vi.fn(),
 }));
 vi.mock("@/db/repositories/draft-signals", () => ({
@@ -457,6 +461,68 @@ describe("live draft service", () => {
       "1": "Team 3",
       "3": "My Team",
     });
+  });
+
+  it("clears only the user's keeper when no keeper is selected", async () => {
+    const myKeeperId = "77777777-7777-4777-8777-777777777777";
+    const otherKeeperId = "88888888-8888-4888-8888-888888888888";
+    vi.mocked(retrieveLeagueConfigurationById).mockResolvedValue({
+      ...DEFAULT_LEAGUE_CONFIGURATION,
+      id: leagueId,
+      userId,
+      leagueFormat: "keeper",
+      draftPosition: 1,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(getDraftSessionForLeague).mockResolvedValue({
+      id: sessionId,
+      leagueId,
+      season: 2026,
+      status: "active",
+      teamNames: {},
+      keeperTeamSlots: { [myKeeperId]: 1, [otherKeeperId]: 2 },
+      playerPoolSnapshotId: null,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+      updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(listDraftPicks).mockResolvedValue([]);
+    vi.mocked(retrieveManualRoster).mockResolvedValue([
+      {
+        id: myKeeperId,
+        leagueId,
+        playerId,
+        fullName: "My Former Keeper",
+        position: "RB",
+        nflTeam: "SF",
+        playerStatus: "active",
+        fantasyTeamName: "My Team",
+        acquisitionType: "drafted",
+        isKeeper: true,
+        originalDraftSeason: 2025,
+        originalDraftRound: 5,
+        keeperSeason: 2026,
+        keeperCostRound: 5,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+
+    await savePersonalDraftSettings({
+      userId,
+      leagueId,
+      draftPosition: 1,
+      keeperPlayerId: null,
+      keeperRound: null,
+    });
+
+    expect(clearDraftUserKeepers).toHaveBeenCalledWith(leagueId, userId, [
+      myKeeperId,
+    ]);
+    expect(updateDraftKeeperTeamSlots).toHaveBeenCalledWith(userId, leagueId, {
+      [otherKeeperId]: 2,
+    });
+    expect(upsertDraftUserKeeper).not.toHaveBeenCalled();
   });
 
   it("skips a keeper-reserved pick when recording the next player", async () => {
