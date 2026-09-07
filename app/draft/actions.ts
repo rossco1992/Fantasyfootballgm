@@ -25,32 +25,36 @@ function draftUrl(
   kind: "message" | "error",
   message: string,
   tab = "available",
+  status?: Record<string, string | number>,
 ): string {
-  return `/draft?tab=${encodeURIComponent(tab)}&${kind}=${encodeURIComponent(message)}`;
+  const extra = Object.entries(status ?? {})
+    .map(
+      ([key, value]) =>
+        `&${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
+    )
+    .join("");
+  return `/draft?tab=${encodeURIComponent(tab)}&${kind}=${encodeURIComponent(message)}${extra}`;
 }
 
-export async function uploadYahooPlayersAction(
-  formData: FormData,
-): Promise<never> {
-  const user = await requireAuthenticatedUser();
+class DraftPlayerCsvError extends Error {}
+
+async function importDraftPlayerCsv(formData: FormData) {
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    redirect(draftUrl("error", "Choose a Yahoo player CSV to continue."));
+    throw new DraftPlayerCsvError("Choose a player CSV to continue.");
   }
   if (!file.name.toLowerCase().endsWith(".csv")) {
-    redirect(draftUrl("error", "Yahoo player data must be a CSV file."));
+    throw new DraftPlayerCsvError("Player data must be a CSV file.");
   }
   if (file.size > MAX_CSV_BYTES) {
-    redirect(draftUrl("error", "Yahoo player CSV must be 2 MB or smaller."));
+    throw new DraftPlayerCsvError("The player CSV must be 2 MB or smaller.");
   }
 
-  const leagueId = String(formData.get("leagueId") ?? "");
-  const season = Number(formData.get("season"));
   let result: Awaited<ReturnType<typeof importCsvBatch>>;
   try {
     result = await importCsvBatch({
       provider: "yahoo",
-      season,
+      season: Number(formData.get("season")),
       week: null,
       scoring: String(formData.get("scoring") ?? "ppr"),
       files: [
@@ -62,33 +66,50 @@ export async function uploadYahooPlayersAction(
       ],
     });
   } catch {
-    redirect(
-      draftUrl(
-        "error",
-        "The Yahoo CSV could not be imported. Check the file format and try again.",
-      ),
+    throw new DraftPlayerCsvError(
+      "The player CSV could not be imported. Check the file format and try again.",
     );
   }
+
   const importedFile = result.files[0];
   if (importedFile?.status !== "imported") {
-    redirect(
-      draftUrl(
-        "error",
-        "The Yahoo CSV needs Player, Position (or Pos), and Rank (or ADP) columns.",
-      ),
+    throw new DraftPlayerCsvError(
+      "The player CSV needs Player, Position (or Pos), and Rank (or ADP) columns.",
     );
   }
-  const playerPoolSnapshotId = importedFile.outcome.snapshotId;
-  if (!playerPoolSnapshotId) {
+  if (!importedFile.outcome.snapshotId) {
+    throw new DraftPlayerCsvError(
+      "The players imported without a usable draft snapshot. Try the upload again.",
+    );
+  }
+
+  return {
+    recordsImported: importedFile.outcome.recordsImported,
+    snapshotId: importedFile.outcome.snapshotId,
+  };
+}
+
+export async function uploadYahooPlayersAction(
+  formData: FormData,
+): Promise<never> {
+  const user = await requireAuthenticatedUser();
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const season = Number(formData.get("season"));
+  let playerCsv: Awaited<ReturnType<typeof importDraftPlayerCsv>>;
+  try {
+    playerCsv = await importDraftPlayerCsv(formData);
+  } catch (error) {
     redirect(
       draftUrl(
         "error",
-        "The Yahoo players imported without a usable draft snapshot. Try the upload again.",
+        error instanceof DraftPlayerCsvError
+          ? error.message
+          : "The player CSV could not be imported. Try again.",
       ),
     );
   }
   try {
-    await startDraftRoom(user.id, leagueId, season, playerPoolSnapshotId);
+    await startDraftRoom(user.id, leagueId, season, playerCsv.snapshotId);
   } catch {
     redirect(
       draftUrl(
@@ -98,8 +119,103 @@ export async function uploadYahooPlayersAction(
     );
   }
   revalidatePath("/draft");
+  redirect(draftUrl("message", "Player CSV loaded. Your draft room is ready."));
+}
+
+export async function updateDraftDataAction(
+  formData: FormData,
+): Promise<never> {
+  const user = await requireAuthenticatedUser();
+  const leagueId = String(formData.get("leagueId") ?? "");
+  const season = Number(formData.get("season"));
+  const returnTab = String(formData.get("returnTab") ?? "available");
+  const league = await retrieveLeagueConfigurationById(leagueId, user.id);
+  if (!league) {
+    redirect(draftUrl("error", "The league could not be found.", returnTab));
+  }
+
+  let playerCsv: Awaited<ReturnType<typeof importDraftPlayerCsv>>;
+  try {
+    playerCsv = await importDraftPlayerCsv(formData);
+    await startDraftRoom(user.id, leagueId, season, playerCsv.snapshotId);
+  } catch (error) {
+    redirect(
+      draftUrl(
+        "error",
+        error instanceof DraftPlayerCsvError
+          ? error.message
+          : "The player CSV could not update the draft room. Try again.",
+        returnTab,
+      ),
+    );
+  }
+
+  let fantasyPros: Awaited<ReturnType<typeof refreshFantasyProsData>>;
+  try {
+    fantasyPros = await refreshFantasyProsData({
+      season,
+      week: null,
+      scoring: league.scoringPreset,
+    });
+  } catch {
+    revalidatePath("/draft");
+    redirect(
+      draftUrl(
+        "error",
+        "Player CSV updated, but FantasyPros could not be refreshed. Verify the Vercel API key and try Refresh FantasyPros only.",
+        returnTab,
+        {
+          csvRecords: playerCsv.recordsImported,
+          fantasyProsStatus: "failed",
+        },
+      ),
+    );
+  }
+  if (fantasyPros.status === "failed") {
+    revalidatePath("/draft");
+    redirect(
+      draftUrl(
+        "error",
+        "Player CSV updated, but FantasyPros could not be refreshed. Try Refresh FantasyPros only.",
+        returnTab,
+        {
+          csvRecords: playerCsv.recordsImported,
+          fantasyProsStatus: "failed",
+        },
+      ),
+    );
+  }
+
+  try {
+    await generateProjectionConsensus({
+      leagueId: league.id,
+      userId: user.id,
+      season,
+      week: null,
+      horizon: "preseason",
+    });
+  } catch {
+    // Rankings, ADP, news, and injuries remain usable without projections.
+  }
+
+  revalidatePath("/draft");
+  const fantasyProsStatus =
+    fantasyPros.status === "partial" || fantasyPros.coverageGaps.length
+      ? "partial"
+      : "current";
   redirect(
-    draftUrl("message", "Yahoo players loaded. Your draft room is ready."),
+    draftUrl(
+      "message",
+      fantasyProsStatus === "current"
+        ? "Both draft data sources are updated."
+        : "Player CSV updated. FantasyPros refreshed with partial coverage.",
+      returnTab,
+      {
+        csvRecords: playerCsv.recordsImported,
+        fantasyProsRecords: fantasyPros.recordsImported,
+        fantasyProsStatus,
+      },
+    ),
   );
 }
 
@@ -202,13 +318,8 @@ export async function assignDraftKeeperSlotsAction(formData: FormData) {
   const leagueId = String(formData.get("leagueId") ?? "");
   const keeperTeamSlots = Object.fromEntries(
     [...formData.entries()]
-      .filter(
-        ([key, value]) => key.startsWith("keeperSlot.") && String(value),
-      )
-      .map(([key, value]) => [
-        key.slice("keeperSlot.".length),
-        Number(value),
-      ]),
+      .filter(([key, value]) => key.startsWith("keeperSlot.") && String(value))
+      .map(([key, value]) => [key.slice("keeperSlot.".length), Number(value)]),
   );
   try {
     await assignDraftKeeperSlots(user.id, leagueId, keeperTeamSlots);

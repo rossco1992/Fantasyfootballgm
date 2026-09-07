@@ -9,7 +9,7 @@ import {
   savePersonalDraftSettingsAction,
   undoDraftPickAction,
   unqueueDraftPlayerAction,
-  uploadYahooPlayersAction,
+  updateDraftDataAction,
 } from "@/app/draft/actions";
 import { ClearDraftButton } from "@/components/draft/clear-draft-button";
 import { DraftUploadForm } from "@/components/draft/draft-upload-form";
@@ -191,7 +191,7 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
                 className="rounded-lg border border-emerald-600 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-neutral-950 dark:text-emerald-300 dark:hover:bg-emerald-950"
                 type="submit"
               >
-                Refresh FantasyPros
+                Refresh FantasyPros only
               </button>
             </form>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -306,6 +306,82 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
           guidance.
         </p>
       ) : null}
+    </section>
+  );
+}
+
+type DraftDataUpdate = {
+  csvRecords: number;
+  fantasyProsRecords: number;
+  fantasyProsStatus: "current" | "partial" | "failed";
+};
+
+function DraftDataConfirmation({ update }: { update: DraftDataUpdate }) {
+  const fantasyProsCurrent = update.fantasyProsStatus === "current";
+  return (
+    <div
+      className={`mt-5 rounded-xl border p-4 ${fantasyProsCurrent ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30" : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"}`}
+    >
+      <p className="text-sm font-bold">
+        {fantasyProsCurrent
+          ? "Both data sources are updated"
+          : "Draft data update needs attention"}
+      </p>
+      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+        <p className="rounded-lg bg-white/80 px-3 py-2 dark:bg-neutral-950/60">
+          <span className="font-bold text-emerald-600">✓</span> Player CSV ·{" "}
+          {update.csvRecords} records
+        </p>
+        <p className="rounded-lg bg-white/80 px-3 py-2 dark:bg-neutral-950/60">
+          <span
+            className={`font-bold ${fantasyProsCurrent ? "text-emerald-600" : "text-amber-600"}`}
+          >
+            {fantasyProsCurrent ? "✓" : "!"}
+          </span>{" "}
+          FantasyPros ·{" "}
+          {update.fantasyProsStatus === "failed"
+            ? "refresh failed"
+            : update.fantasyProsStatus === "partial"
+              ? `${update.fantasyProsRecords} records · partial`
+              : `${update.fantasyProsRecords} records`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function DraftDataPanel({
+  room,
+  returnTab,
+  update,
+  initialSetup = false,
+}: {
+  room: DraftRoom;
+  returnTab: string;
+  update?: DraftDataUpdate;
+  initialSetup?: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6 dark:border-neutral-800 dark:bg-neutral-950">
+      <p className="text-xs font-bold tracking-wider text-emerald-600 uppercase dark:text-emerald-400">
+        Draft data
+      </p>
+      <h2 className="mt-1 text-xl font-bold">
+        {initialSetup ? "Load your player pool" : "Update CSV + FantasyPros"}
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+        Choose your latest player CSV, then use one button to update it and
+        FantasyPros together.
+      </p>
+      <DraftUploadForm
+        action={updateDraftDataAction}
+        initialSetup={initialSetup}
+        leagueId={room.league.id}
+        returnTab={returnTab}
+        scoring={room.league.scoringPreset}
+        season={room.session?.season ?? new Date().getUTCFullYear()}
+      />
+      {update ? <DraftDataConfirmation update={update} /> : null}
     </section>
   );
 }
@@ -672,8 +748,7 @@ function MyRoster({ room }: { room: DraftRoom }) {
     (pick) => pick.fantasyTeamSlot === room.league.draftPosition,
   );
   const myKeepers = room.keeperReservations.filter(
-    (reservation) =>
-      reservation.fantasyTeamSlot === room.league.draftPosition,
+    (reservation) => reservation.fantasyTeamSlot === room.league.draftPosition,
   );
   return (
     <div className="p-4">
@@ -721,33 +796,29 @@ export function DraftRoomView({
   activeTab,
   message,
   error,
+  dataUpdate,
 }: {
   room: DraftRoom;
   activeTab: "available" | "queue" | "roster";
   message?: string;
   error?: string;
+  dataUpdate?: DraftDataUpdate;
 }) {
   if (!room.session || room.players.length === 0) {
     return (
-      <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8 dark:border-neutral-800 dark:bg-neutral-950">
-        <p className="text-sm font-semibold text-emerald-600">Draft setup</p>
-        <h2 className="mt-2 text-2xl font-bold">Upload Yahoo players</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600 dark:text-neutral-300">
-          Upload a Yahoo CSV containing player name, position, team, and rank or
-          ADP. This creates the available-player pool for your live board.
-        </p>
+      <div>
         {error ? (
           <p className="mt-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
             {error}
           </p>
         ) : null}
-        <DraftUploadForm
-          action={uploadYahooPlayersAction}
-          leagueId={room.league.id}
-          scoring={room.league.scoringPreset}
-          season={new Date().getUTCFullYear()}
+        <DraftDataPanel
+          initialSetup
+          returnTab="available"
+          room={room}
+          update={dataUpdate}
         />
-      </section>
+      </div>
     );
   }
 
@@ -758,7 +829,7 @@ export function DraftRoomView({
   ] as const;
   return (
     <div className="space-y-6">
-      {message ? (
+      {message && !dataUpdate ? (
         <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
           {message}
         </p>
@@ -768,6 +839,7 @@ export function DraftRoomView({
           {error}
         </p>
       ) : null}
+      <DraftDataPanel returnTab={activeTab} room={room} update={dataUpdate} />
       <DraftAssistantPanel room={room} />
       <Board room={room} />
       <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
@@ -786,18 +858,6 @@ export function DraftRoomView({
         {activeTab === "queue" ? <Queue room={room} /> : null}
         {activeTab === "roster" ? <MyRoster room={room} /> : null}
       </section>
-      <details className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
-        <summary className="cursor-pointer text-sm font-semibold">
-          Replace Yahoo player file
-        </summary>
-        <DraftUploadForm
-          action={uploadYahooPlayersAction}
-          leagueId={room.league.id}
-          replacement
-          scoring={room.league.scoringPreset}
-          season={new Date().getUTCFullYear()}
-        />
-      </details>
     </div>
   );
 }
