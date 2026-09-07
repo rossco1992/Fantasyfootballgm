@@ -1,7 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
+
+function PendingStatus() {
+  const [stage, setStage] = useState<"starting" | "refreshing" | "slow">(
+    "starting",
+  );
+
+  useEffect(() => {
+    const refreshingTimer = window.setTimeout(
+      () => setStage("refreshing"),
+      5_000,
+    );
+    const slowTimer = window.setTimeout(() => setStage("slow"), 60_000);
+    return () => {
+      window.clearTimeout(refreshingTimer);
+      window.clearTimeout(slowTimer);
+    };
+  }, []);
+
+  const label =
+    stage === "starting"
+      ? "Starting both updates…"
+      : stage === "refreshing"
+        ? "Refreshing FantasyPros…"
+        : "Still working — this can take a couple minutes…";
+
+  return (
+    <span className="flex items-center justify-center gap-2" aria-live="polite">
+      <span
+        aria-hidden="true"
+        className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+      />
+      {label}
+    </span>
+  );
+}
 
 function SubmitButton({ initialSetup = false }: { initialSetup?: boolean }) {
   const { pending } = useFormStatus();
@@ -15,16 +50,7 @@ function SubmitButton({ initialSetup = false }: { initialSetup?: boolean }) {
       type="submit"
     >
       {pending ? (
-        <span
-          className="flex items-center justify-center gap-2"
-          aria-live="polite"
-        >
-          <span
-            aria-hidden="true"
-            className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-          />
-          Refreshing both — this may take up to a minute…
-        </span>
+        <PendingStatus />
       ) : initialSetup ? (
         "Load draft data"
       ) : (
