@@ -301,8 +301,13 @@ export async function assignDraftKeeperSlotsAction(formData: FormData) {
 export async function savePersonalDraftSettingsAction(formData: FormData) {
   const user = await requireAuthenticatedUser();
   const leagueId = String(formData.get("leagueId") ?? "");
-  const keeperPlayerId = String(formData.get("keeperPlayerId") ?? "");
-  const rawKeeperRound = String(formData.get("keeperRound") ?? "");
+  const hasKeeper = String(formData.get("keeperMode") ?? "none") === "keeper";
+  const keeperPlayerId = hasKeeper
+    ? String(formData.get("keeperPlayerId") ?? "")
+    : "";
+  const rawKeeperRound = hasKeeper
+    ? String(formData.get("keeperRound") ?? "")
+    : "";
   try {
     await savePersonalDraftSettings({
       userId: user.id,

@@ -312,6 +312,7 @@ describe("Yahoo draft upload action", () => {
     const data = new FormData();
     data.set("leagueId", "44444444-4444-4444-8444-444444444444");
     data.set("draftPosition", "3");
+    data.set("keeperMode", "keeper");
     data.set("keeperPlayerId", "player-a");
     data.set("keeperRound", "5");
 
@@ -324,6 +325,26 @@ describe("Yahoo draft upload action", () => {
       draftPosition: 3,
       keeperPlayerId: "player-a",
       keeperRound: 5,
+    });
+  });
+
+  it("saves an explicit no-keeper choice", async () => {
+    const data = new FormData();
+    data.set("leagueId", "44444444-4444-4444-8444-444444444444");
+    data.set("draftPosition", "3");
+    data.set("keeperMode", "none");
+    data.set("keeperPlayerId", "stale-player");
+    data.set("keeperRound", "5");
+
+    await expect(savePersonalDraftSettingsAction(data)).rejects.toThrow(
+      "REDIRECT:/draft?tab=available&message=Draft%20settings%20saved.",
+    );
+    expect(savePersonalDraftSettings).toHaveBeenCalledWith({
+      userId: user.id,
+      leagueId: "44444444-4444-4444-8444-444444444444",
+      draftPosition: 3,
+      keeperPlayerId: null,
+      keeperRound: null,
     });
   });
 

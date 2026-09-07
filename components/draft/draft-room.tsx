@@ -15,6 +15,7 @@ import {
 import { ClearDraftButton } from "@/components/draft/clear-draft-button";
 import { DraftUploadForm } from "@/components/draft/draft-upload-form";
 import { FantasyProsRefreshForm } from "@/components/draft/fantasypros-refresh-form";
+import { PersonalDraftSettingsForm } from "@/components/draft/personal-draft-settings-form";
 import type { DraftPick, DraftPlayer } from "@/domain/draft";
 import type { DraftRoom } from "@/services/draft";
 
@@ -378,89 +379,29 @@ function Board({ room }: { room: DraftRoom }) {
               Draft settings
             </summary>
             <div className="absolute top-11 right-0 z-30 max-h-[80vh] w-[min(42rem,calc(100vw-3rem))] overflow-y-auto rounded-xl border border-neutral-200 bg-white p-4 shadow-xl dark:border-neutral-700 dark:bg-neutral-950">
-              <form action={savePersonalDraftSettingsAction}>
-                <input name="leagueId" type="hidden" value={room.league.id} />
-                <p className="text-sm font-bold">My draft setup</p>
-                <p className="mt-1 text-xs leading-5 text-neutral-500">
-                  Your keeper is removed from available players and treated as
-                  already on your roster by the assistant.
-                </p>
-                <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                  <label className="grid gap-1 text-xs">
-                    <span className="font-semibold text-neutral-500">
-                      Your draft position
-                    </span>
-                    <select
-                      className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
-                      defaultValue={room.league.draftPosition}
-                      disabled={room.picks.length > 0}
-                      name="draftPosition"
-                    >
-                      {Array.from(
-                        { length: room.league.teamCount },
-                        (_, index) => (
-                          <option key={index + 1} value={index + 1}>
-                            Pick {index + 1}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </label>
-                  {room.league.leagueFormat === "keeper" ? (
-                    <>
-                      <label className="grid gap-1 text-xs">
-                        <span className="font-semibold text-neutral-500">
-                          Your keeper player
-                        </span>
-                        <select
-                          className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
-                          defaultValue={myKeeper?.playerId ?? ""}
-                          disabled={room.picks.length > 0}
-                          name="keeperPlayerId"
-                          required
-                        >
-                          <option value="">Select keeper</option>
-                          {room.players.map((player) => (
-                            <option key={player.id} value={player.id}>
-                              {player.yahooRank
-                                ? `#${player.yahooRank} · `
-                                : ""}
-                              {player.fullName} · {player.position}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="grid gap-1 text-xs">
-                        <span className="font-semibold text-neutral-500">
-                          Keeper draft round
-                        </span>
-                        <input
-                          className="min-h-11 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
-                          defaultValue={myKeeper?.keeperCostRound ?? ""}
-                          disabled={room.picks.length > 0}
-                          max={totalRounds}
-                          min={1}
-                          name="keeperRound"
-                          required
-                          type="number"
-                        />
-                      </label>
-                    </>
-                  ) : null}
-                </div>
-                {room.picks.length > 0 ? (
-                  <p className="mt-3 text-xs text-neutral-500">
-                    Clear the draft board before changing these settings.
-                  </p>
-                ) : null}
-                <button
-                  className="mt-4 min-h-11 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={room.picks.length > 0}
-                  type="submit"
-                >
-                  Save draft setup
-                </button>
-              </form>
+              <PersonalDraftSettingsForm
+                action={savePersonalDraftSettingsAction}
+                draftPosition={room.league.draftPosition}
+                keeper={
+                  myKeeper
+                    ? {
+                        playerId: myKeeper.playerId,
+                        round: myKeeper.keeperCostRound,
+                      }
+                    : null
+                }
+                leagueFormat={room.league.leagueFormat}
+                leagueId={room.league.id}
+                locked={room.picks.length > 0}
+                players={room.players.map((player) => ({
+                  id: player.id,
+                  fullName: player.fullName,
+                  position: player.position,
+                  rank: player.yahooRank,
+                }))}
+                teamCount={room.league.teamCount}
+                totalRounds={totalRounds}
+              />
               <details className="mt-5 border-t border-neutral-200 pt-5 dark:border-neutral-800">
                 <summary className="cursor-pointer text-xs font-semibold text-neutral-500">
                   Team names (optional)
