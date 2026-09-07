@@ -21,8 +21,9 @@ follow when implementing them.
   the same round as the prior year's draft round. Waiver/free-agent cost stays
   configurable until the league rule is confirmed.
 - Use a platform-independent domain model and provider adapters.
-- Use one authenticated server-side FantasyPros API refresh as the primary
-  fantasy-data path, with CSV upload retained as a backup.
+- In the draft room, combine up to two ranked player CSVs into the dependable
+  base player pool. Treat the authenticated server-side FantasyPros refresh as
+  an optional, non-blocking enhancement.
 - Do not build multi-league support, auctions, trades, write-back, public
   onboarding, billing, or commercial licensing in this MVP.
 
@@ -59,7 +60,7 @@ follow when implementing them.
 ## Data Flow
 
 ```
-Manual league state + FantasyPros API or uploaded CSV files
+Manual league state + uploaded player CSV + optional FantasyPros API data
   → Provider Adapter
   → Validation + Player Identity Matching
   → Raw Immutable Source Snapshots
@@ -72,8 +73,10 @@ Manual league state + FantasyPros API or uploaded CSV files
 
 ## Initial Data Strategy
 
-- Use the FantasyPros Public API v2 as the only live fantasy-data integration.
-- Keep FantasyPros and Fantasy Nerds CSV uploads as a manual backup, including
+- Use the FantasyPros Public API v2 as the only live fantasy-data integration,
+  but never make it a prerequisite for using the draft room.
+- Use the ranked player CSV as the draft-room player pool. Keep FantasyPros and
+  Fantasy Nerds CSV uploads for optional projection-data imports, including
   multiple files per batch.
 - Treat identities in the latest FantasyPros API and uploaded CSV snapshots as
   the draftable player pool.

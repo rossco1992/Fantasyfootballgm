@@ -23,12 +23,12 @@ function SubmitButton({ initialSetup = false }: { initialSetup?: boolean }) {
             aria-hidden="true"
             className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
           />
-          Refreshing both — this may take up to a minute…
+          Uploading CSV…
         </span>
       ) : initialSetup ? (
-        "Load draft data"
+        "Load CSV files"
       ) : (
-        "Update both"
+        "Upload CSV files"
       )}
     </button>
   );
@@ -49,7 +49,7 @@ export function DraftUploadForm({
   returnTab?: string;
   initialSetup?: boolean;
 }) {
-  const [fileName, setFileName] = useState("");
+  const [fileNames, setFileNames] = useState<string[]>([]);
 
   return (
     <form action={action} className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -62,14 +62,19 @@ export function DraftUploadForm({
           Choose CSV
         </span>
         <span className="min-w-0 truncate text-neutral-500 dark:text-neutral-400">
-          {fileName || "No file selected"}
+          {fileNames.length ? fileNames.join(" + ") : "No files selected"}
         </span>
         <input
           accept=".csv,text/csv"
           className="sr-only"
-          name="file"
+          multiple
+          name="files"
           onChange={(event) =>
-            setFileName(event.currentTarget.files?.[0]?.name ?? "")
+            setFileNames(
+              Array.from(event.currentTarget.files ?? []).map(
+                (file) => file.name,
+              ),
+            )
           }
           required
           type="file"
@@ -77,8 +82,8 @@ export function DraftUploadForm({
       </label>
       <SubmitButton initialSetup={initialSetup} />
       <p className="text-xs leading-5 text-neutral-500 sm:col-span-2 dark:text-neutral-400">
-        One tap replaces the player CSV and refreshes FantasyPros rankings,
-        projections, injuries, and news.
+        Select up to 2 CSVs. They are combined into one player pool; neither
+        file replaces the other. FantasyPros refreshes separately.
       </p>
     </form>
   );

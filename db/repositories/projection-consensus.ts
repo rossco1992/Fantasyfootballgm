@@ -108,7 +108,10 @@ const LATEST_PROJECTION_SOURCES_SQL = `with latest_snapshots as (
          snapshot.provider_id, snapshot.id as snapshot_id
     from provider_data_snapshots snapshot
     join provider_data_records record on record.snapshot_id = snapshot.id
+    join provider_ingestion_runs run on run.id = snapshot.ingestion_run_id
+    join providers source_provider on source_provider.id = snapshot.provider_id
    where record.data_type = 'projection'
+     and (source_provider.slug <> 'fantasypros' or run.status = 'succeeded')
      and snapshot.season = $1
      and (($2::smallint is null and snapshot.week is null) or snapshot.week = $2)
    order by snapshot.provider_id, snapshot.observed_at desc,

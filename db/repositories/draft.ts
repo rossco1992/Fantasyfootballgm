@@ -196,7 +196,11 @@ export async function listYahooDraftPlayers(
          join providers provider on provider.id = snapshot.provider_id
         where provider.slug like 'yahoo-csv%'
           and (
-            ($1::uuid is not null and snapshot.id = $1)
+            ($1::uuid is not null and snapshot.observed_at = (
+              select anchor.observed_at
+                from provider_data_snapshots anchor
+               where anchor.id = $1
+            ))
             or (
               $1::uuid is null and exists (
                 select 1 from provider_ingestion_state state

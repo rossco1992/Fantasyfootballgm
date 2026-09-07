@@ -14,6 +14,7 @@ import { upsertDraftUserKeeper } from "@/db/repositories/roster-assignments";
 import { DEFAULT_LEAGUE_CONFIGURATION } from "@/domain/league-configuration";
 import {
   clearDraftBoard,
+  classifyFantasyProsCoverage,
   assignDraftKeeperSlots,
   loadDraftRoom,
   recordNextDraftPick,
@@ -27,6 +28,7 @@ import {
 import { retrieveManualRoster } from "@/services/roster-setup";
 import { loadDraftAssistant } from "@/services/draft-recommendations";
 import { retrieveProviderFreshness } from "@/services/provider-ingestion";
+import { getLatestFantasyProsPlayerPoolCoverage } from "@/db/repositories/draft-signals";
 
 vi.mock("@/db/repositories/draft", () => ({
   addDraftQueueEntry: vi.fn(),
@@ -44,6 +46,9 @@ vi.mock("@/db/repositories/draft", () => ({
 }));
 vi.mock("@/db/repositories/roster-assignments", () => ({
   upsertDraftUserKeeper: vi.fn(),
+}));
+vi.mock("@/db/repositories/draft-signals", () => ({
+  getLatestFantasyProsPlayerPoolCoverage: vi.fn(),
 }));
 vi.mock("@/services/league-configurations", () => ({
   retrieveLeagueConfigurationById: vi.fn(),
@@ -64,6 +69,58 @@ const leagueId = "22222222-2222-4222-8222-222222222222";
 const sessionId = "33333333-3333-4333-8333-333333333333";
 const playerId = "44444444-4444-4444-8444-444444444444";
 
+describe("FantasyPros player-pool coverage", () => {
+  const fresh = {
+    providerId: "provider-a",
+    providerSlug: "fantasypros",
+    staleAfterSeconds: 21_600,
+    latestSnapshotId: "snapshot-a",
+    lastStatus: "succeeded" as const,
+    lastAttemptAt: new Date("2026-09-07T12:00:00Z"),
+    lastSuccessAt: new Date("2026-09-07T12:00:00Z"),
+    consecutiveFailures: 0,
+    lastError: null,
+    updatedAt: new Date("2026-09-07T12:00:00Z"),
+    isStale: false,
+  };
+
+  it("requires 90% coverage in rankings, ADP, and projections", () => {
+    expect(
+      classifyFantasyProsCoverage({
+        total: 200,
+        rankings: 180,
+        adp: 180,
+        projections: 180,
+        observedAt: new Date(),
+        freshness: fresh,
+      }),
+    ).toBe("ready");
+    expect(
+      classifyFantasyProsCoverage({
+        total: 200,
+        rankings: 180,
+        adp: 179,
+        projections: 180,
+        observedAt: new Date(),
+        freshness: fresh,
+      }),
+    ).toBe("partial");
+  });
+
+  it("does not call stale or partial ingestion ready", () => {
+    expect(
+      classifyFantasyProsCoverage({
+        total: 200,
+        rankings: 200,
+        adp: 200,
+        projections: 200,
+        observedAt: new Date(),
+        freshness: { ...fresh, lastStatus: "partial" },
+      }),
+    ).toBe("partial");
+  });
+});
+
 describe("live draft service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,6 +132,13 @@ describe("live draft service", () => {
       draftType: "snake",
       createdAt: new Date("2026-08-30T12:00:00Z"),
       updatedAt: new Date("2026-08-30T12:00:00Z"),
+    });
+    vi.mocked(getLatestFantasyProsPlayerPoolCoverage).mockResolvedValue({
+      observedAt: null,
+      total: 0,
+      rankings: 0,
+      adp: 0,
+      projections: 0,
     });
     vi.mocked(getDraftSessionForLeague).mockResolvedValue({
       id: sessionId,
