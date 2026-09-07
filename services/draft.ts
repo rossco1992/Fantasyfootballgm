@@ -36,6 +36,7 @@ import {
   retrieveProviderFreshness,
   type ProviderFreshness,
 } from "@/services/provider-ingestion";
+import { getLatestFantasyProsPlayerPoolCoverage } from "@/db/repositories/draft-signals";
 
 export class DraftRoomError extends Error {}
 
@@ -51,7 +52,34 @@ export type DraftRoom = {
   currentOverallPick: number | null;
   assistant: DraftAssistantResult | null;
   fantasyProsFreshness: ProviderFreshness | null;
+  fantasyProsCoverage: {
+    status: "ready" | "partial" | "unavailable";
+    total: number;
+    rankings: number;
+    adp: number;
+    projections: number;
+    observedAt: Date | null;
+  };
 };
+
+export function classifyFantasyProsCoverage(input: {
+  total: number;
+  rankings: number;
+  adp: number;
+  projections: number;
+  observedAt: Date | null;
+  freshness: ProviderFreshness | null;
+}): "ready" | "partial" | "unavailable" {
+  if (!input.observedAt || input.total === 0) return "unavailable";
+  const minimum = Math.ceil(input.total * 0.9);
+  return input.rankings >= minimum &&
+    input.adp >= minimum &&
+    input.projections >= minimum &&
+    input.freshness?.lastStatus === "succeeded" &&
+    !input.freshness.isStale
+    ? "ready"
+    : "partial";
+}
 
 function totalDraftRounds(league: LeagueConfiguration): number {
   return Object.values(league.rosterSlots).reduce(
@@ -114,6 +142,17 @@ export async function loadDraftRoom(
     retrieveManualRoster(userId, leagueId),
     retrieveProviderFreshness("fantasypros"),
   ]);
+  const rawFantasyProsCoverage = await getLatestFantasyProsPlayerPoolCoverage(
+    session?.season ?? new Date().getUTCFullYear(),
+    players.map((player) => player.id),
+  );
+  const fantasyProsCoverage = {
+    ...rawFantasyProsCoverage,
+    status: classifyFantasyProsCoverage({
+      ...rawFantasyProsCoverage,
+      freshness: fantasyProsFreshness,
+    }),
+  };
   if (!session) {
     return {
       league,
@@ -127,6 +166,7 @@ export async function loadDraftRoom(
       currentOverallPick: null,
       assistant: null,
       fantasyProsFreshness,
+      fantasyProsCoverage,
     };
   }
   const [picks, queue] = await Promise.all([
@@ -176,6 +216,7 @@ export async function loadDraftRoom(
     currentOverallPick,
     assistant,
     fantasyProsFreshness,
+    fantasyProsCoverage,
   };
 }
 
@@ -206,7 +247,9 @@ export async function assignDraftKeeperSlots(
       keeper.keeperCostRound === null ||
       keeper.keeperCostRound > totalRounds
     ) {
-      throw new DraftRoomError(`${keeper.fullName} needs a valid keeper round.`);
+      throw new DraftRoomError(
+        `${keeper.fullName} needs a valid keeper round.`,
+      );
     }
     const roundKey = `${slot}:${keeper.keeperCostRound}`;
     if (reservedRounds.has(roundKey)) {

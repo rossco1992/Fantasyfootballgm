@@ -6,7 +6,7 @@ import {
   refreshDraftFantasyProsAction,
   renameDraftTeamsAction,
   savePersonalDraftSettingsAction,
-  updateDraftDataAction,
+  replaceDraftPlayerCsvAction,
   uploadYahooPlayersAction,
 } from "@/app/draft/actions";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
@@ -154,7 +154,7 @@ describe("Yahoo draft upload action", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/draft");
   });
 
-  it("updates the player CSV and FantasyPros with one action", async () => {
+  it("replaces the player CSV without waiting on FantasyPros", async () => {
     const league = {
       ...DEFAULT_LEAGUE_CONFIGURATION,
       id: "44444444-4444-4444-8444-444444444444",
@@ -167,16 +167,11 @@ describe("Yahoo draft upload action", () => {
     vi.mocked(importCsvBatch).mockResolvedValue({
       files: [{ fileName: "yahoo.csv", status: "imported", outcome }],
     });
-    vi.mocked(refreshFantasyProsData).mockResolvedValue({
-      ...outcome,
-      recordsImported: 500,
-      playerIdentitiesImported: 200,
-    });
     const data = formData();
     data.set("returnTab", "queue");
 
-    await expect(updateDraftDataAction(data)).rejects.toThrow(
-      /REDIRECT:\/draft\?tab=queue&message=Both%20draft%20data%20sources%20are%20updated.*csvRecords=1&fantasyProsRecords=500&fantasyProsStatus=current/,
+    await expect(replaceDraftPlayerCsvAction(data)).rejects.toThrow(
+      /REDIRECT:\/draft\?tab=queue&message=Player%20CSV%20updated%20%C2%B7%201%20players/,
     );
     expect(startDraftRoom).toHaveBeenCalledWith(
       user.id,
@@ -184,24 +179,12 @@ describe("Yahoo draft upload action", () => {
       2026,
       outcome.snapshotId,
     );
-    expect(refreshFantasyProsData).toHaveBeenCalledWith({
-      season: 2026,
-      week: null,
-      scoring: "half_ppr",
-    });
-    expect(generateProjectionConsensus).toHaveBeenCalled();
+    expect(refreshFantasyProsData).not.toHaveBeenCalled();
+    expect(generateProjectionConsensus).not.toHaveBeenCalled();
     expect(revalidatePath).toHaveBeenCalledWith("/draft");
   });
 
-  it("confirms the CSV but flags FantasyPros when the combined refresh fails", async () => {
-    const league = {
-      ...DEFAULT_LEAGUE_CONFIGURATION,
-      id: "44444444-4444-4444-8444-444444444444",
-      userId: user.id,
-      createdAt: new Date("2026-08-30T12:00:00Z"),
-      updatedAt: new Date("2026-08-30T12:00:00Z"),
-    };
-    vi.mocked(retrieveLeagueConfigurationById).mockResolvedValue(league);
+  it("keeps CSV replacement independent when FantasyPros is failing", async () => {
     vi.mocked(importCsvBatch).mockResolvedValue({
       files: [{ fileName: "yahoo.csv", status: "imported", outcome }],
     });
@@ -209,10 +192,11 @@ describe("Yahoo draft upload action", () => {
       new Error("rate limit"),
     );
 
-    await expect(updateDraftDataAction(formData())).rejects.toThrow(
-      /csvRecords=1&fantasyProsStatus=failed/,
+    await expect(replaceDraftPlayerCsvAction(formData())).rejects.toThrow(
+      /Player%20CSV%20updated/,
     );
     expect(startDraftRoom).toHaveBeenCalled();
+    expect(refreshFantasyProsData).not.toHaveBeenCalled();
     expect(revalidatePath).toHaveBeenCalledWith("/draft");
   });
 

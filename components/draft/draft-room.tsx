@@ -9,10 +9,12 @@ import {
   savePersonalDraftSettingsAction,
   undoDraftPickAction,
   unqueueDraftPlayerAction,
-  updateDraftDataAction,
+  replaceDraftPlayerCsvAction,
+  uploadYahooPlayersAction,
 } from "@/app/draft/actions";
 import { ClearDraftButton } from "@/components/draft/clear-draft-button";
 import { DraftUploadForm } from "@/components/draft/draft-upload-form";
+import { FantasyProsRefreshForm } from "@/components/draft/fantasypros-refresh-form";
 import type { DraftPick, DraftPlayer } from "@/domain/draft";
 import type { DraftRoom } from "@/services/draft";
 
@@ -106,37 +108,6 @@ function RecommendationAction({
   );
 }
 
-function RecommendationFactors({
-  factors,
-}: {
-  factors: NonNullable<
-    DraftRoom["assistant"]
-  >["recommendations"][number]["factors"];
-}) {
-  const entries = [
-    ["Value", factors.projectedValue],
-    ["Scarcity", factors.scarcity],
-    ["Wait risk", factors.availabilityRisk],
-    ["Roster fit", factors.rosterFit],
-    ["Confidence", factors.confidence],
-  ] as const;
-  return (
-    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-      {entries.map(([label, value]) => (
-        <div
-          className="rounded-lg bg-white/70 px-3 py-2 dark:bg-black/20"
-          key={label}
-        >
-          <p className="text-[10px] font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
-            {label}
-          </p>
-          <p className="mt-0.5 text-sm font-bold">{Math.round(value)}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function DraftAssistantPanel({ room }: { room: DraftRoom }) {
   const assistant = room.assistant;
   const best = assistant?.recommendations[0];
@@ -149,10 +120,10 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
         : "standard";
   const dataLabel =
     assistant.dataMode === "projection_consensus"
-      ? "FantasyPros projections + Yahoo"
+      ? "CSV + FantasyPros projections"
       : assistant.dataMode === "fantasypros_market"
-        ? "FantasyPros ECR/ADP + Yahoo"
-        : "Yahoo market data only";
+        ? "CSV + FantasyPros rankings"
+        : "Player CSV";
   const freshness = room.fantasyProsFreshness;
   const refreshedLabel = freshness?.lastSuccessAt
     ? `Updated ${freshness.lastSuccessAt.toLocaleString("en-US", {
@@ -177,32 +148,17 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
                 : `Your next pick: ${assistant.nextUserOverallPick} · ${assistant.picksUntilUser} picks away`}
             </h2>
           </div>
-          <div className="flex flex-col items-start gap-2 sm:items-end">
+          <div className="flex flex-col items-start gap-1 sm:items-end">
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${assistant.dataMode === "market_only" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : "bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100"}`}
             >
               {dataLabel}
             </span>
-            <form action={refreshDraftFantasyProsAction}>
-              <input name="leagueId" type="hidden" value={room.league.id} />
-              <input name="season" type="hidden" value={room.session?.season} />
-              <input name="returnTab" type="hidden" value="available" />
-              <button
-                className="rounded-lg border border-emerald-600 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-neutral-950 dark:text-emerald-300 dark:hover:bg-emerald-950"
-                type="submit"
-              >
-                Refresh FantasyPros only
-              </button>
-            </form>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
               {refreshedLabel}
             </p>
           </div>
         </div>
-        <p className="mt-3 text-[11px] leading-5 text-neutral-500 dark:text-neutral-400">
-          Refreshes players · ECR and tiers · ADP · projections · injuries ·
-          latest news
-        </p>
       </div>
 
       <div className="p-5">
@@ -238,7 +194,7 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
                 : ""}
             </p>
             <ul className="mt-4 space-y-1 text-sm leading-6 text-neutral-700 dark:text-neutral-200">
-              {best.reasons.map((reason) => (
+              {best.reasons.slice(0, 2).map((reason) => (
                 <li key={reason}>• {reason}</li>
               ))}
             </ul>
@@ -261,7 +217,6 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
           </div>
           <RecommendationAction playerId={best.playerId} room={room} />
         </div>
-        <RecommendationFactors factors={best.factors} />
       </div>
 
       {assistant.recommendations.length > 1 ? (
@@ -270,7 +225,7 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
             Alternatives
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {assistant.recommendations.slice(1).map((recommendation) => (
+            {assistant.recommendations.slice(1, 3).map((recommendation) => (
               <div
                 className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950"
                 key={recommendation.playerId}
@@ -298,91 +253,82 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
           </div>
         </div>
       ) : null}
-
-      {assistant.dataMode === "market_only" ? (
-        <p className="border-t border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          Use Refresh FantasyPros above or upload projection CSVs to unlock
-          league-adjusted value, projection confidence, and stronger scarcity
-          guidance.
-        </p>
-      ) : null}
     </section>
   );
 }
 
-type DraftDataUpdate = {
-  csvRecords: number;
-  fantasyProsRecords: number;
-  fantasyProsStatus: "current" | "partial" | "failed";
-};
-
-function DraftDataConfirmation({ update }: { update: DraftDataUpdate }) {
-  const fantasyProsCurrent = update.fantasyProsStatus === "current";
-  return (
-    <div
-      className={`mt-5 rounded-xl border p-4 ${fantasyProsCurrent ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30" : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"}`}
-    >
-      <p className="text-sm font-bold">
-        {fantasyProsCurrent
-          ? "Both data sources are updated"
-          : "Draft data update needs attention"}
-      </p>
-      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-        <p className="rounded-lg bg-white/80 px-3 py-2 dark:bg-neutral-950/60">
-          <span className="font-bold text-emerald-600">✓</span> Player CSV ·{" "}
-          {update.csvRecords} records
-        </p>
-        <p className="rounded-lg bg-white/80 px-3 py-2 dark:bg-neutral-950/60">
-          <span
-            className={`font-bold ${fantasyProsCurrent ? "text-emerald-600" : "text-amber-600"}`}
-          >
-            {fantasyProsCurrent ? "✓" : "!"}
-          </span>{" "}
-          FantasyPros ·{" "}
-          {update.fantasyProsStatus === "failed"
-            ? "refresh failed"
-            : update.fantasyProsStatus === "partial"
-              ? `${update.fantasyProsRecords} records · partial`
-              : `${update.fantasyProsRecords} records`}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function DraftDataPanel({
-  room,
-  returnTab,
-  update,
-  initialSetup = false,
-}: {
-  room: DraftRoom;
-  returnTab: string;
-  update?: DraftDataUpdate;
-  initialSetup?: boolean;
-}) {
+function InitialDraftDataPanel({ room }: { room: DraftRoom }) {
   return (
     <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6 dark:border-neutral-800 dark:bg-neutral-950">
       <p className="text-xs font-bold tracking-wider text-emerald-600 uppercase dark:text-emerald-400">
         Draft data
       </p>
-      <h2 className="mt-1 text-xl font-bold">
-        {initialSetup ? "Load your player pool" : "Update CSV + FantasyPros"}
-      </h2>
+      <h2 className="mt-1 text-xl font-bold">Load your player pool</h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600 dark:text-neutral-300">
-        Choose your latest player CSV, then use one button to update it and
-        FantasyPros together.
+        Upload one ranked player CSV. The draft helper opens as soon as the CSV
+        is ready; FantasyPros is optional.
       </p>
       <DraftUploadForm
-        action={updateDraftDataAction}
-        initialSetup={initialSetup}
+        action={uploadYahooPlayersAction}
+        initialSetup
         leagueId={room.league.id}
-        returnTab={returnTab}
         scoring={room.league.scoringPreset}
         season={room.session?.season ?? new Date().getUTCFullYear()}
       />
-      {update ? <DraftDataConfirmation update={update} /> : null}
     </section>
+  );
+}
+
+function DraftDataControls({
+  room,
+  returnTab,
+}: {
+  room: DraftRoom;
+  returnTab: string;
+}) {
+  const coverage = room.fantasyProsCoverage;
+  const percent = (count: number) =>
+    coverage.total ? Math.round((count / coverage.total) * 100) : 0;
+  return (
+    <details className="rounded-xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-950">
+      <summary className="cursor-pointer text-sm font-semibold">
+        Data sources · CSV {room.players.length} players · FantasyPros{" "}
+        {coverage.status}
+      </summary>
+      <div className="mt-4 grid gap-5 border-t border-neutral-200 pt-4 md:grid-cols-2 dark:border-neutral-800">
+        <div>
+          <p className="text-sm font-bold">Replace player CSV</p>
+          <DraftUploadForm
+            action={replaceDraftPlayerCsvAction}
+            leagueId={room.league.id}
+            returnTab={returnTab}
+            scoring={room.league.scoringPreset}
+            season={room.session?.season ?? new Date().getUTCFullYear()}
+          />
+        </div>
+        <div>
+          <p className="text-sm font-bold">FantasyPros enhancement</p>
+          <p className="mt-2 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
+            Rankings {coverage.rankings}/{coverage.total} (
+            {percent(coverage.rankings)}%) · ADP {coverage.adp}/{coverage.total}{" "}
+            ({percent(coverage.adp)}%) · Projections {coverage.projections}/
+            {coverage.total} ({percent(coverage.projections)}%)
+          </p>
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            Ready requires fresh 90% coverage in all three. Partial refreshes
+            do not replace the last successful snapshot.
+          </p>
+          <div className="mt-3">
+            <FantasyProsRefreshForm
+              action={refreshDraftFantasyProsAction}
+              leagueId={room.league.id}
+              returnTab={returnTab}
+              season={room.session?.season ?? new Date().getUTCFullYear()}
+            />
+          </div>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -796,13 +742,11 @@ export function DraftRoomView({
   activeTab,
   message,
   error,
-  dataUpdate,
 }: {
   room: DraftRoom;
   activeTab: "available" | "queue" | "roster";
   message?: string;
   error?: string;
-  dataUpdate?: DraftDataUpdate;
 }) {
   if (!room.session || room.players.length === 0) {
     return (
@@ -812,12 +756,7 @@ export function DraftRoomView({
             {error}
           </p>
         ) : null}
-        <DraftDataPanel
-          initialSetup
-          returnTab="available"
-          room={room}
-          update={dataUpdate}
-        />
+        <InitialDraftDataPanel room={room} />
       </div>
     );
   }
@@ -829,7 +768,7 @@ export function DraftRoomView({
   ] as const;
   return (
     <div className="space-y-6">
-      {message && !dataUpdate ? (
+      {message ? (
         <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
           {message}
         </p>
@@ -839,8 +778,8 @@ export function DraftRoomView({
           {error}
         </p>
       ) : null}
-      <DraftDataPanel returnTab={activeTab} room={room} update={dataUpdate} />
       <DraftAssistantPanel room={room} />
+      <DraftDataControls returnTab={activeTab} room={room} />
       <Board room={room} />
       <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
         <nav className="flex overflow-x-auto border-b border-neutral-200 dark:border-neutral-800">

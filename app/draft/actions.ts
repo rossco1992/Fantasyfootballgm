@@ -122,103 +122,35 @@ export async function uploadYahooPlayersAction(
   redirect(draftUrl("message", "Player CSV loaded. Your draft room is ready."));
 }
 
-export async function updateDraftDataAction(
+export async function replaceDraftPlayerCsvAction(
   formData: FormData,
 ): Promise<never> {
   const user = await requireAuthenticatedUser();
   const leagueId = String(formData.get("leagueId") ?? "");
   const season = Number(formData.get("season"));
   const returnTab = String(formData.get("returnTab") ?? "available");
-  const league = await retrieveLeagueConfigurationById(leagueId, user.id);
-  if (!league) {
-    redirect(draftUrl("error", "The league could not be found.", returnTab));
-  }
-
-  const [playerCsvResult, fantasyProsResult] = await Promise.allSettled([
-    (async () => {
-      const playerCsv = await importDraftPlayerCsv(formData);
-      await startDraftRoom(user.id, leagueId, season, playerCsv.snapshotId);
-      return playerCsv;
-    })(),
-    refreshFantasyProsData({
-      season,
-      week: null,
-      scoring: league.scoringPreset,
-    }),
-  ]);
-
-  if (playerCsvResult.status === "rejected") {
+  let playerCsv: Awaited<ReturnType<typeof importDraftPlayerCsv>>;
+  try {
+    playerCsv = await importDraftPlayerCsv(formData);
+    await startDraftRoom(user.id, leagueId, season, playerCsv.snapshotId);
+  } catch (error) {
     redirect(
       draftUrl(
         "error",
-        playerCsvResult.reason instanceof DraftPlayerCsvError
-          ? playerCsvResult.reason.message
+        error instanceof DraftPlayerCsvError
+          ? error.message
           : "The player CSV could not update the draft room. Try again.",
         returnTab,
       ),
     );
   }
-  const playerCsv = playerCsvResult.value;
-
-  if (fantasyProsResult.status === "rejected") {
-    revalidatePath("/draft");
-    redirect(
-      draftUrl(
-        "error",
-        "Player CSV updated, but FantasyPros could not be refreshed. Verify the Vercel API key and try Refresh FantasyPros only.",
-        returnTab,
-        {
-          csvRecords: playerCsv.recordsImported,
-          fantasyProsStatus: "failed",
-        },
-      ),
-    );
-  }
-  const fantasyPros = fantasyProsResult.value;
-  if (fantasyPros.status === "failed") {
-    revalidatePath("/draft");
-    redirect(
-      draftUrl(
-        "error",
-        "Player CSV updated, but FantasyPros could not be refreshed. Try Refresh FantasyPros only.",
-        returnTab,
-        {
-          csvRecords: playerCsv.recordsImported,
-          fantasyProsStatus: "failed",
-        },
-      ),
-    );
-  }
-
-  try {
-    await generateProjectionConsensus({
-      leagueId: league.id,
-      userId: user.id,
-      season,
-      week: null,
-      horizon: "preseason",
-    });
-  } catch {
-    // Rankings, ADP, news, and injuries remain usable without projections.
-  }
 
   revalidatePath("/draft");
-  const fantasyProsStatus =
-    fantasyPros.status === "partial" || fantasyPros.coverageGaps.length
-      ? "partial"
-      : "current";
   redirect(
     draftUrl(
       "message",
-      fantasyProsStatus === "current"
-        ? "Both draft data sources are updated."
-        : "Player CSV updated. FantasyPros refreshed with partial coverage.",
+      `Player CSV updated · ${playerCsv.recordsImported} players.`,
       returnTab,
-      {
-        csvRecords: playerCsv.recordsImported,
-        fantasyProsRecords: fantasyPros.recordsImported,
-        fantasyProsStatus,
-      },
     ),
   );
 }
@@ -272,8 +204,8 @@ export async function refreshDraftFantasyProsAction(
 
   revalidatePath("/draft");
   const coverage = outcome.coverageGaps.length
-    ? ` Partial data: ${outcome.coverageGaps.join(", ")}.`
-    : " Players, ECR, ADP, projections, injuries, and news are current.";
+    ? " Some FantasyPros datasets were unavailable; exact player coverage is shown in Data sources."
+    : " Exact player coverage is shown in Data sources.";
   redirect(
     draftUrl(
       "message",
