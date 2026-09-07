@@ -168,8 +168,14 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
             <p className="text-xs font-bold text-emerald-700 uppercase dark:text-emerald-300">
               {assistant.picksUntilUser === 0
                 ? "Best pick now"
-                : "Current recommendation"}
+                : `Projected recommendation at pick ${assistant.nextUserOverallPick}`}
             </p>
+            {assistant.picksUntilUser > 0 ? (
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                After projecting {assistant.picksUntilUser} opponent picks from
+                the current ECR and ADP order.
+              </p>
+            ) : null}
             <div className="mt-2 flex items-center gap-3">
               <span
                 className={`rounded px-2 py-1 text-xs font-bold ${positionColors[best.position] ?? positionColors.DST}`}
@@ -223,7 +229,9 @@ function DraftAssistantPanel({ room }: { room: DraftRoom }) {
       {assistant.recommendations.length > 1 ? (
         <div className="border-t border-emerald-200 bg-white/50 p-5 dark:border-emerald-900 dark:bg-black/10">
           <p className="text-xs font-bold tracking-wider text-neutral-500 uppercase">
-            Alternatives
+            {assistant.picksUntilUser === 0
+              ? "Alternatives"
+              : `Other projected options at pick ${assistant.nextUserOverallPick}`}
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {assistant.recommendations.slice(1, 3).map((recommendation) => (
