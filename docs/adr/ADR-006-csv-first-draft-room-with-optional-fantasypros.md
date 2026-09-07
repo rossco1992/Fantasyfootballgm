@@ -14,8 +14,9 @@ pool had rankings, ADP, and projections.
 
 ## Decision
 
-The ranked player CSV is the dependable draft-room player pool. CSV replacement
-is an independent action and never invokes FantasyPros.
+One or two ranked player CSVs form the dependable draft-room player pool. Files
+selected in the same upload are combined using their shared observation time.
+The CSV action is independent and never invokes FantasyPros.
 
 FantasyPros remains an optional enhancement. The UI reports its exact coverage
 against the active CSV player IDs for rankings, ADP, and projections. “Ready”

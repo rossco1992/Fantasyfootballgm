@@ -15,15 +15,15 @@ describe("DraftUploadForm", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: "Replace player CSV" }),
+      screen.getByRole("button", { name: "Upload CSV files" }),
     ).toBeVisible();
-    expect(screen.getByText("No file selected")).toBeVisible();
+    expect(screen.getByText("No files selected")).toBeVisible();
     expect(
-      screen.getByText(/FantasyPros is refreshed separately and never blocks/),
+      screen.getByText(/Select up to 2 CSVs.*combined into one player pool/),
     ).toBeVisible();
   });
 
-  it("shows the selected CSV filename before submitting", () => {
+  it("shows both selected CSV filenames before submitting", () => {
     render(
       <DraftUploadForm
         action={vi.fn()}
@@ -35,10 +35,15 @@ describe("DraftUploadForm", () => {
 
     fireEvent.change(screen.getByLabelText(/Choose CSV/), {
       target: {
-        files: [new File(["Player,Pos"], "latest-rankings.csv")],
+        files: [
+          new File(["Player,Pos"], "latest-rankings.csv"),
+          new File(["Player,Pos"], "latest-projections.csv"),
+        ],
       },
     });
 
-    expect(screen.getByText("latest-rankings.csv")).toBeVisible();
+    expect(
+      screen.getByText(/latest-rankings\.csv \+ latest-projections\.csv/),
+    ).toBeVisible();
   });
 });
