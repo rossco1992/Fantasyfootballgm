@@ -9,15 +9,27 @@ function SubmitButton({ initialSetup = false }: { initialSetup?: boolean }) {
   return (
     <button
       aria-disabled={pending}
+      aria-busy={pending}
       className="w-full rounded-lg bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:bg-emerald-800 disabled:opacity-70 sm:w-auto"
       disabled={pending}
       type="submit"
     >
-      {pending
-        ? "Updating CSV + FantasyPros…"
-        : initialSetup
-          ? "Load draft data"
-          : "Update both"}
+      {pending ? (
+        <span
+          className="flex items-center justify-center gap-2"
+          aria-live="polite"
+        >
+          <span
+            aria-hidden="true"
+            className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+          />
+          Refreshing both — this may take up to a minute…
+        </span>
+      ) : initialSetup ? (
+        "Load draft data"
+      ) : (
+        "Update both"
+      )}
     </button>
   );
 }

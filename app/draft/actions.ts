@@ -134,30 +134,33 @@ export async function updateDraftDataAction(
     redirect(draftUrl("error", "The league could not be found.", returnTab));
   }
 
-  let playerCsv: Awaited<ReturnType<typeof importDraftPlayerCsv>>;
-  try {
-    playerCsv = await importDraftPlayerCsv(formData);
-    await startDraftRoom(user.id, leagueId, season, playerCsv.snapshotId);
-  } catch (error) {
+  const [playerCsvResult, fantasyProsResult] = await Promise.allSettled([
+    (async () => {
+      const playerCsv = await importDraftPlayerCsv(formData);
+      await startDraftRoom(user.id, leagueId, season, playerCsv.snapshotId);
+      return playerCsv;
+    })(),
+    refreshFantasyProsData({
+      season,
+      week: null,
+      scoring: league.scoringPreset,
+    }),
+  ]);
+
+  if (playerCsvResult.status === "rejected") {
     redirect(
       draftUrl(
         "error",
-        error instanceof DraftPlayerCsvError
-          ? error.message
+        playerCsvResult.reason instanceof DraftPlayerCsvError
+          ? playerCsvResult.reason.message
           : "The player CSV could not update the draft room. Try again.",
         returnTab,
       ),
     );
   }
+  const playerCsv = playerCsvResult.value;
 
-  let fantasyPros: Awaited<ReturnType<typeof refreshFantasyProsData>>;
-  try {
-    fantasyPros = await refreshFantasyProsData({
-      season,
-      week: null,
-      scoring: league.scoringPreset,
-    });
-  } catch {
+  if (fantasyProsResult.status === "rejected") {
     revalidatePath("/draft");
     redirect(
       draftUrl(
@@ -171,6 +174,7 @@ export async function updateDraftDataAction(
       ),
     );
   }
+  const fantasyPros = fantasyProsResult.value;
   if (fantasyPros.status === "failed") {
     revalidatePath("/draft");
     redirect(
