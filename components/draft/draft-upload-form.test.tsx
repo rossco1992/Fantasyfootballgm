@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DraftUploadForm } from "@/components/draft/draft-upload-form";
 
 describe("DraftUploadForm", () => {
-  it("shows one clear action for the CSV and FantasyPros update", () => {
+  it("keeps the player CSV update independent from FantasyPros", () => {
     render(
       <DraftUploadForm
         action={vi.fn()}
@@ -14,12 +14,12 @@ describe("DraftUploadForm", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Update both" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Replace player CSV" }),
+    ).toBeVisible();
     expect(screen.getByText("No file selected")).toBeVisible();
     expect(
-      screen.getByText(
-        /One tap replaces the player CSV and refreshes FantasyPros/,
-      ),
+      screen.getByText(/FantasyPros is refreshed separately and never blocks/),
     ).toBeVisible();
   });
 

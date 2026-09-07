@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { query } from "@/db/client";
-import { getLatestFantasyProsDraftData } from "@/db/repositories/draft-signals";
+import {
+  getLatestFantasyProsDraftData,
+  getLatestFantasyProsPlayerPoolCoverage,
+} from "@/db/repositories/draft-signals";
 
 vi.mock("@/db/client", () => ({ query: vi.fn() }));
 
@@ -119,5 +122,33 @@ describe("draft signals repository", () => {
     });
 
     await expect(getLatestFantasyProsDraftData(2026)).resolves.toBeNull();
+  });
+
+  it("counts core data coverage against the active CSV pool", async () => {
+    vi.mocked(query).mockResolvedValueOnce({
+      rows: [
+        {
+          observed_at: observedAt,
+          rankings: 2,
+          adp: 2,
+          projections: 1,
+        },
+      ],
+      rowCount: 1,
+      command: "SELECT",
+      oid: 0,
+      fields: [],
+    });
+    const playerIds = [PLAYER_ID, "33333333-3333-4333-8333-333333333333"];
+    await expect(
+      getLatestFantasyProsPlayerPoolCoverage(2026, playerIds),
+    ).resolves.toEqual({
+      observedAt,
+      total: 2,
+      rankings: 2,
+      adp: 2,
+      projections: 1,
+    });
+    expect(vi.mocked(query).mock.calls[0]?.[1]).toEqual([2026, playerIds]);
   });
 });

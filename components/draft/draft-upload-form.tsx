@@ -23,12 +23,12 @@ function SubmitButton({ initialSetup = false }: { initialSetup?: boolean }) {
             aria-hidden="true"
             className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
           />
-          Refreshing both — this may take up to a minute…
+          Uploading CSV…
         </span>
       ) : initialSetup ? (
-        "Load draft data"
+        "Load player CSV"
       ) : (
-        "Update both"
+        "Replace player CSV"
       )}
     </button>
   );
@@ -77,8 +77,8 @@ export function DraftUploadForm({
       </label>
       <SubmitButton initialSetup={initialSetup} />
       <p className="text-xs leading-5 text-neutral-500 sm:col-span-2 dark:text-neutral-400">
-        One tap replaces the player CSV and refreshes FantasyPros rankings,
-        projections, injuries, and news.
+        This replaces the player pool immediately. FantasyPros is refreshed
+        separately and never blocks the CSV upload.
       </p>
     </form>
   );
