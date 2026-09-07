@@ -48,6 +48,64 @@ function player(
 }
 
 describe("draft recommendation engine", () => {
+  it("projects intervening picks before recommending for the user's next turn", () => {
+    const candidates = Array.from({ length: 14 }, (_, index) =>
+      player(
+        `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        index === 0 ? "Bijan Robinson" : `Market Player ${index + 1}`,
+        index % 2 === 0 ? "RB" : "WR",
+        null,
+        index + 1,
+      ),
+    );
+
+    const result = recommendDraftPlayers({
+      candidates,
+      league,
+      rosterPositionCounts: {},
+      currentOverallPick: 2,
+      nextUserOverallPick: 12,
+      picksUntilUser: 10,
+    });
+
+    expect(result.picksUntilUser).toBe(10);
+    expect(result.recommendations).toHaveLength(4);
+    expect(result.recommendations.map((entry) => entry.fullName)).not.toContain(
+      "Bijan Robinson",
+    );
+    expect(result.recommendations.map((entry) => entry.yahooRank)).toEqual(
+      expect.arrayContaining([11, 12, 13, 14]),
+    );
+  });
+
+  it("uses the real available pool when the user is on the clock", () => {
+    const result = recommendDraftPlayers({
+      candidates: [
+        player(
+          "00000000-0000-4000-8000-000000000001",
+          "Bijan Robinson",
+          "RB",
+          null,
+          1,
+        ),
+        player(
+          "00000000-0000-4000-8000-000000000002",
+          "Later Player",
+          "WR",
+          null,
+          12,
+        ),
+      ],
+      league,
+      rosterPositionCounts: {},
+      currentOverallPick: 12,
+      nextUserOverallPick: 12,
+      picksUntilUser: 0,
+    });
+
+    expect(result.recommendations[0]?.fullName).toBe("Bijan Robinson");
+  });
+
   it("combines projection value, scarcity, availability, and roster fit", () => {
     const candidates = [
       player(

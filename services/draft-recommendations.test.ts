@@ -9,7 +9,110 @@ const userId = "22222222-2222-4222-8222-222222222222";
 const sessionId = "33333333-3333-4333-8333-333333333333";
 const playerId = "44444444-4444-4444-8444-444444444444";
 
+function availablePlayer(rank: number) {
+  return {
+    id: `player-${rank}`,
+    fullName: rank === 1 ? "Bijan Robinson" : `Market Player ${rank}`,
+    position: rank % 2 === 0 ? ("WR" as const) : ("RB" as const),
+    nflTeam: "SF",
+    byeWeek: null,
+    status: "active" as const,
+    yahooRank: rank,
+    yahooAdp: rank,
+    createdAt: new Date("2026-08-30T12:00:00Z"),
+    updatedAt: new Date("2026-08-30T12:00:00Z"),
+  };
+}
+
+function session() {
+  return {
+    id: sessionId,
+    leagueId,
+    season: 2026,
+    status: "active" as const,
+    teamNames: {},
+    keeperTeamSlots: {},
+    playerPoolSnapshotId: "77777777-7777-4777-8777-777777777777",
+    createdAt: new Date("2026-08-30T12:00:00Z"),
+    updatedAt: new Date("2026-08-30T12:00:00Z"),
+  };
+}
+
 describe("draft recommendation service", () => {
+  it("uses draft position 6 to forecast five selections before the first pick", () => {
+    const result = buildDraftAssistant({
+      league: {
+        ...DEFAULT_LEAGUE_CONFIGURATION,
+        id: leagueId,
+        userId,
+        teamCount: 12,
+        draftPosition: 6,
+        createdAt: new Date("2026-08-30T12:00:00Z"),
+        updatedAt: new Date("2026-08-30T12:00:00Z"),
+      },
+      session: session(),
+      availablePlayers: Array.from({ length: 12 }, (_, index) =>
+        availablePlayer(index + 1),
+      ),
+      picks: [],
+      keeperReservations: [],
+      consensus: null,
+      fantasyProsData: null,
+    });
+
+    expect(result).toMatchObject({
+      currentOverallPick: 1,
+      nextUserOverallPick: 6,
+      picksUntilUser: 5,
+    });
+    expect(result.recommendations[0]?.yahooRank).toBe(6);
+    expect(result.recommendations.map((entry) => entry.fullName)).not.toContain(
+      "Bijan Robinson",
+    );
+  });
+
+  it("recalculates the distance at the snake turn for draft position 6", () => {
+    const picks = Array.from({ length: 6 }, (_, index) => ({
+      id: `pick-${index + 1}`,
+      sessionId,
+      playerId: `drafted-${index + 1}`,
+      fullName: `Drafted Player ${index + 1}`,
+      position: "WR" as const,
+      nflTeam: "NYJ",
+      overallPick: index + 1,
+      round: 1,
+      pickInRound: index + 1,
+      fantasyTeamSlot: index + 1,
+      createdAt: new Date("2026-08-30T12:00:00Z"),
+    }));
+    const result = buildDraftAssistant({
+      league: {
+        ...DEFAULT_LEAGUE_CONFIGURATION,
+        id: leagueId,
+        userId,
+        teamCount: 12,
+        draftPosition: 6,
+        createdAt: new Date("2026-08-30T12:00:00Z"),
+        updatedAt: new Date("2026-08-30T12:00:00Z"),
+      },
+      session: session(),
+      availablePlayers: Array.from({ length: 24 }, (_, index) =>
+        availablePlayer(index + 7),
+      ),
+      picks,
+      keeperReservations: [],
+      consensus: null,
+      fantasyProsData: null,
+    });
+
+    expect(result).toMatchObject({
+      currentOverallPick: 7,
+      nextUserOverallPick: 19,
+      picksUntilUser: 12,
+    });
+    expect(result.recommendations[0]?.yahooRank).toBe(19);
+  });
+
   it("uses the live pick order, user's roster, keepers, and consensus data", () => {
     const consensus: PersistedConsensusSnapshot = {
       id: "55555555-5555-4555-8555-555555555555",

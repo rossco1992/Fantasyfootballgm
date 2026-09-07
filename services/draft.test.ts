@@ -172,7 +172,7 @@ describe("live draft service", () => {
     vi.mocked(retrieveManualRoster).mockResolvedValue([]);
     vi.mocked(retrieveProviderFreshness).mockResolvedValue(null);
     vi.mocked(loadDraftAssistant).mockResolvedValue({
-      version: "draft-recommendation-v2",
+      version: "draft-recommendation-v3",
       dataMode: "market_only",
       currentOverallPick: 1,
       nextUserOverallPick: 1,

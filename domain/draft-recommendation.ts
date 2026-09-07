@@ -1,7 +1,7 @@
 import type { LeagueConfiguration } from "@/domain/league-configuration";
 import type { PlayerPosition, PlayerStatus } from "@/domain/player";
 
-export const DRAFT_RECOMMENDATION_VERSION = "draft-recommendation-v2";
+export const DRAFT_RECOMMENDATION_VERSION = "draft-recommendation-v3";
 
 export type DraftRecommendationCandidate = {
   playerId: string;
@@ -255,10 +255,25 @@ export function recommendDraftPlayers(input: {
   picksUntilUser?: number;
   limit?: number;
 }): DraftAssistantResult {
-  const candidates = input.candidates.filter(
+  const availableCandidates = input.candidates.filter(
     (candidate) =>
       candidate.status !== "inactive" && candidate.status !== "retired",
   );
+  const picksUntilUser = Math.max(
+    0,
+    input.picksUntilUser ??
+      input.nextUserOverallPick - input.currentOverallPick,
+  );
+  const candidates =
+    picksUntilUser > 0 && availableCandidates.length > picksUntilUser
+      ? [...availableCandidates]
+          .sort(
+            (left, right) =>
+              marketPick(left) - marketPick(right) ||
+              left.fullName.localeCompare(right.fullName),
+          )
+          .slice(picksUntilUser)
+      : availableCandidates;
   const byPosition = new Map<PlayerPosition, DraftRecommendationCandidate[]>();
   for (const position of POSITIONS) {
     byPosition.set(
@@ -406,11 +421,7 @@ export function recommendDraftPlayers(input: {
         : "market_only",
     currentOverallPick: input.currentOverallPick,
     nextUserOverallPick: input.nextUserOverallPick,
-    picksUntilUser: Math.max(
-      0,
-      input.picksUntilUser ??
-        input.nextUserOverallPick - input.currentOverallPick,
-    ),
+    picksUntilUser,
     recommendations: ranked,
   };
 }
